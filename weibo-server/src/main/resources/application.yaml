@@ -22,3 +22,13 @@ mybatis:
   configuration:
     #开启驼峰命名
     map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+logging:
+  level:
+    com:
+      jun:
+        weiboserver:
+          mapper: debug
+          service: info
+          controller: info
