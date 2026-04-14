@@ -24,4 +24,10 @@ public class AuthController {
         log.info("用户登录：{}",userLoginDTO);
         return authService.login(userLoginDTO);
     }
+
+    @PostMapping("/logout")
+    public Result logout(){
+        log.info("用户登出");
+        return Result.success();
+    }
 }
