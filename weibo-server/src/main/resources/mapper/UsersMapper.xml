@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.jun.weiboserver.mapper.UsersMapper">
+
+    <update id="updateProfile">
+        update users
+        <set>
+            <if test="dto.nickname!=null and dto.nickname!=''">nickname =#{dto.nickname},</if>
+            <if test="dto.bio!=null and dto.bio!=''">bio =#{dto.bio},</if>
+            <if test="dto.gender!=null">gender =#{dto.gender},</if>
+            <if test="dto.birthday!=null">birthday =#{dto.birthday},</if>
+            <if test="dto.relationshipStatus!=null">relationship_status =#{dto.relationshipStatus},</if>
+            <if test="dto.hometown!=null and dto.hometown!=''">hometown =#{dto.hometown},</if>
+            <if test="dto.avatar!=null and dto.avatar!=''">avatar =#{dto.avatar},</if>
+        </set>
+        where id = #{userId}
+    </update>
+</mapper>
