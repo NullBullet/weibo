@@ -1,6 +1,7 @@
 package com.jun.weiboserver.controller.v1.user;
 
-import com.jun.dto.UserProfileDTO;
+import com.jun.dto.StatusPageQueryDTO;import com.jun.dto.UserProfileDTO;
+import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.vo.UsersInfoVO;
 import com.jun.weiboserver.service.UsersService;
@@ -8,9 +9,6 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.util.HashMap;
-import java.util.Map;
 
 @Slf4j
 @RestController
@@ -35,5 +33,11 @@ public class UsersController {
     public Result<UserProfileDTO> profile(){
         log.info("获取用户资料");
         return usersService.getProfile();
+    }
+
+    @GetMapping("/me/posts")
+    public Result<PageResult> posts(StatusPageQueryDTO StatusPageQueryDTO){
+        log.info("获取用户个人帖子记录{}", StatusPageQueryDTO);
+        return usersService.getPost(StatusPageQueryDTO);
     }
 }

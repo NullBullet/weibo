@@ -1,11 +1,15 @@
 package com.jun.weiboserver.service.impl;
 
 import cn.hutool.core.util.StrUtil;
+import com.github.pagehelper.Page;
+import com.github.pagehelper.PageHelper;
+import com.jun.dto.StatusPageQueryDTO;
 import com.jun.dto.UserProfileDTO;
 import com.jun.entity.User;
-import com.jun.entity.UserStatistics;
+import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.utils.OssUtil;
+import com.jun.vo.StatusVO;
 import com.jun.vo.UserCountVO;
 import com.jun.vo.UsersInfoVO;
 import com.jun.weiboserver.mapper.UsersMapper;
@@ -15,7 +19,6 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -83,6 +86,18 @@ public class UsersServiceImpl implements UsersService {
         return Result.success(fileUrl);
     }
 
+    public Result<PageResult> getPost(StatusPageQueryDTO statusPageQueryDTO) {
+        Long userId = BaseContext.getCurrentId();
+        statusPageQueryDTO.setUserId(userId);
+        PageHelper.startPage(statusPageQueryDTO.getPage(), statusPageQueryDTO.getPageSize());
+        Page<StatusVO> page = usersMapper.getPostByUserId(statusPageQueryDTO);
+
+        long total = page.getTotal();
+        List<StatusVO> record = page.getResult();
+
+        return Result.success(new PageResult(total,record));
+    }
+
     @Override
     public Result<UserProfileDTO> getProfile() {
         Long userId = BaseContext.getCurrentId();
@@ -90,22 +105,4 @@ public class UsersServiceImpl implements UsersService {
         return Result.success(userProfileDTO);
     }
 
-/*    @Override
-    public Result<String> uploadAvatar(MultipartFile file) {
-        if (file.isEmpty()) {
-            return Result.error("上传文件不能为空");
-        }
-        try {
-            String folder = "weibo/avatars/";
-            String originalFilename = file.getOriginalFilename();
-            String extension = originalFilename.substring(originalFilename.lastIndexOf("."));
-            String objectName = folder+UUID.randomUUID().toString() + extension;
-
-            String fileUrl = ossUtil.upload(file.getInputStream(), objectName);
-            return Result.success(fileUrl);
-        } catch (Exception e) {
-            log.error("文件上传失败");
-        }
-        return Result.error("文件上传失败");
-    }*/
 }

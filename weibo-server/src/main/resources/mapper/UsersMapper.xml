@@ -15,4 +15,12 @@
         </set>
         where id = #{userId}
     </update>
+    <select id="getPostByUserId" resultType="com.jun.vo.StatusVO">
+        select *from statuses left join status_images on statuses.id = status_images.status_id
+                <where>
+                    <if test="q != null and q!=''">and content like concat("%",#{q},"%")</if>
+                    <if test="userId!=null">and user_id = #{userId}</if>
+                </where>
+        order by statuses.created_at desc
+    </select>
 </mapper>
