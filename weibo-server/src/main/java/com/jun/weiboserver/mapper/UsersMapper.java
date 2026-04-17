@@ -3,6 +3,7 @@ package com.jun.weiboserver.mapper;
 import com.github.pagehelper.Page;
 import com.jun.dto.StatusPageQueryDTO;
 import com.jun.dto.UserProfileDTO;
+import com.jun.entity.StatusImage;
 import com.jun.entity.User;
 import com.jun.entity.UserStatistics;
 import com.jun.vo.StatusVO;
@@ -11,6 +12,8 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
+
+import java.util.List;
 
 @Mapper
 public interface UsersMapper {
@@ -32,4 +35,6 @@ public interface UsersMapper {
     String getAvatarByUserId(Long userId);
 
     Page<StatusVO> getPostByUserId(StatusPageQueryDTO statusPageQueryDTO);
+
+    List<StatusImage> getImageByIds(List<Long> ids);
 }

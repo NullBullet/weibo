@@ -5,6 +5,7 @@ import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import com.jun.dto.StatusPageQueryDTO;
 import com.jun.dto.UserProfileDTO;
+import com.jun.entity.StatusImage;
 import com.jun.entity.User;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
@@ -21,8 +22,11 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -91,6 +95,20 @@ public class UsersServiceImpl implements UsersService {
         statusPageQueryDTO.setUserId(userId);
         PageHelper.startPage(statusPageQueryDTO.getPage(), statusPageQueryDTO.getPageSize());
         Page<StatusVO> page = usersMapper.getPostByUserId(statusPageQueryDTO);
+
+        List<Long> ids = new ArrayList<>();
+        for (StatusVO statusVO : page) {
+            ids.add(statusVO.getId());
+        }
+
+        List<StatusImage> images = usersMapper.getImageByIds(ids);
+        Map<Long, List<StatusImage>> groupByStatusId = images.stream()
+                .collect(Collectors.groupingBy(StatusId -> StatusId.getStatusId()));
+
+        for (StatusVO statusVO : page) {
+            List<StatusImage> image = groupByStatusId.get(statusVO.getId());
+            statusVO.setImages(image);
+        }
 
         long total = page.getTotal();
         List<StatusVO> record = page.getResult();
