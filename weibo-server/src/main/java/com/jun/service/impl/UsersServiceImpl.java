@@ -7,6 +7,7 @@ import com.jun.dto.StatusPageQueryDTO;
 import com.jun.dto.UserProfileDTO;
 import com.jun.entity.StatusImage;
 import com.jun.entity.User;
+import com.jun.exception.UploadAvatarException;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.utils.OssUtil;
@@ -19,14 +20,14 @@ import com.jun.context.BaseContext;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
+
+import static com.jun.constant.MessageConstant.UPLOAD_IMAGE_ERROR;
 
 @Slf4j
 @Service
@@ -65,6 +66,7 @@ public class UsersServiceImpl implements UsersService {
                 ossUtil.delete(avatarPath);
             } catch (Exception e) {
                 log.error("文件删除失败");
+                throw new UploadAvatarException(UPLOAD_IMAGE_ERROR);
             }
 
             try {
@@ -76,6 +78,7 @@ public class UsersServiceImpl implements UsersService {
                 fileUrl = ossUtil.upload(avatarFile.getInputStream(), objectName);
             } catch (Exception e) {
                 log.error("文件上传失败");
+                throw new UploadAvatarException(UPLOAD_IMAGE_ERROR);
             }
         }
 
@@ -84,7 +87,7 @@ public class UsersServiceImpl implements UsersService {
         }
         userProfileDTO.setAvatar(fileUrl);
         int isSuccess = usersMapper.updateProfile(userProfileDTO,userId);
-        if (isSuccess != 1){
+        if (isSuccess <= 0){
             return Result.error("更新个人信息失败！");
         }
         return Result.success(fileUrl);

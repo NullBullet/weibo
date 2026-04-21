@@ -9,6 +9,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
+import java.util.Set;
 
 @Mapper
 public interface HotMapper {
@@ -18,7 +19,7 @@ public interface HotMapper {
     @Select("select *from statuses")
     Page<HotStatusVO> getPosts();
 
-    List<UserVO> getUsersInfoByUserIds(List<Long> ids);
+    List<UserVO> getUsersInfoByUserIds(Set<Long> setIds);
 
     List<StatusImage> getImageByIds(List<Long> ids);
 }

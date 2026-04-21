@@ -25,6 +25,11 @@ public class HotStatusVO implements Serializable {
     private Long userId;
 
     /**
+     * 当前用户是否关注帖子用户
+     */
+    private Boolean isFollowed;
+
+    /**
      * 微博内容
      */
     private String content;

@@ -17,27 +17,22 @@ public class Follow implements Serializable {
     private Long id;
 
     /**
-     * 用户 ID（关注者）
-     */
-    private Long userId;
-
-    /**
      * 被关注用户 ID
      */
-    private Long followUserId;
+    private Long followeeId;
 
     /**
-     * 是否关注：0-取消，1-关注
+     * 用户 ID（关注者）
      */
-    private Integer isFollowed;
+    private Long followerId;
 
     /**
-     * 创建时间
+     * 是否关注：0-正常、1-拉黑
+     */
+    private Integer status;
+
+    /**
+     * 关注时间
      */
     private LocalDateTime createdAt;
-
-    /**
-     * 更新时间
-     */
-    private LocalDateTime updatedAt;
 }

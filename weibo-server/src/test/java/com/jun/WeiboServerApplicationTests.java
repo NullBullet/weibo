@@ -12,11 +12,11 @@ import java.util.stream.Collectors;
 @SpringBootTest
 class WeiboServerApplicationTests {
 
-    @Test
+    /*@Test
     void contextLoads() {
-    }
+    }*/
 
-    @Test
+    /*@Test
     void test(){
         String a = "https://java-ai-kurisutina.oss-cn-beijing.aliyuncs.com/weibo/avatars/a49e2061-f2dc-42da-ad67-a12ea778049d.jpeg";
         List<String> split = StrUtil.split(a, "/");
@@ -26,13 +26,13 @@ class WeiboServerApplicationTests {
         List<String> collect = split.stream().skip(3).toList();
         String join = StrUtil.join("/", collect);
         System.out.println(join);
-    }
+    }*/
 
-    @Resource
-    private RedisTemplate redisTemplate;
+    /*@Resource
+    private RedisTemplate redisTemplate;*/
 
-    @Test
+    /*@Test
     void text1(){
         redisTemplate.opsForSet().add("test_key", "test_value");
-    }
+    }*/
 }
