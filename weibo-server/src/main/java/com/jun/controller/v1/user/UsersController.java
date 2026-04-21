@@ -1,10 +1,10 @@
-package com.jun.weiboserver.controller.v1.user;
+package com.jun.controller.v1.user;
 
 import com.jun.dto.StatusPageQueryDTO;import com.jun.dto.UserProfileDTO;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.vo.UsersInfoVO;
-import com.jun.weiboserver.service.UsersService;
+import com.jun.service.UsersService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;

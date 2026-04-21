@@ -1,4 +1,4 @@
-package com.jun.weiboserver.service.impl;
+package com.jun.service.impl;
 
 import cn.hutool.core.util.StrUtil;
 import com.github.pagehelper.Page;
@@ -13,8 +13,8 @@ import com.jun.utils.OssUtil;
 import com.jun.vo.StatusVO;
 import com.jun.vo.UserCountVO;
 import com.jun.vo.UsersInfoVO;
-import com.jun.weiboserver.mapper.UsersMapper;
-import com.jun.weiboserver.service.UsersService;
+import com.jun.mapper.UsersMapper;
+import com.jun.service.UsersService;
 import com.jun.context.BaseContext;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;

@@ -1,8 +1,8 @@
-package com.jun.weiboserver.controller.v1.user;
+package com.jun.controller.v1.user;
 
 import com.jun.dto.UserLoginDTO;
 import com.jun.vo.UserLoginVO;
-import com.jun.weiboserver.service.AuthService;
+import com.jun.service.AuthService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PostMapping;

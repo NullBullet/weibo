@@ -1,6 +1,6 @@
-package com.jun.weiboserver.config;
+package com.jun.config;
 
-import com.jun.weiboserver.interceptor.JwtTokenUserInterceptor;
+import com.jun.interceptor.JwtTokenUserInterceptor;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Configuration;

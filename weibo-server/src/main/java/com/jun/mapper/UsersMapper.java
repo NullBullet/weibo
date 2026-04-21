@@ -1,4 +1,4 @@
-package com.jun.weiboserver.mapper;
+package com.jun.mapper;
 
 import com.github.pagehelper.Page;
 import com.jun.dto.StatusPageQueryDTO;

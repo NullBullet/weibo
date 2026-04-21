@@ -1,4 +1,4 @@
-package com.jun.weiboserver.service.impl;
+package com.jun.service.impl;
 
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
@@ -9,8 +9,8 @@ import com.jun.result.Result;
 import com.jun.vo.HotStatusVO;
 import com.jun.vo.HotTopicVO;
 import com.jun.vo.UserVO;
-import com.jun.weiboserver.mapper.HotMapper;
-import com.jun.weiboserver.service.HotService;
+import com.jun.mapper.HotMapper;
+import com.jun.service.HotService;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 

@@ -1,4 +1,4 @@
-package com.jun.weiboserver.service.impl;
+package com.jun.service.impl;
 
 import com.jun.constant.MessageConstant;
 import com.jun.dto.UserLoginDTO;
@@ -10,8 +10,8 @@ import com.jun.properties.JwtProperties;
 import com.jun.result.Result;
 import com.jun.utils.JwtUtil;
 import com.jun.vo.UserLoginVO;
-import com.jun.weiboserver.mapper.AuthMapper;
-import com.jun.weiboserver.service.AuthService;
+import com.jun.mapper.AuthMapper;
+import com.jun.service.AuthService;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;

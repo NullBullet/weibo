@@ -1,4 +1,4 @@
-package com.jun.weiboserver.service;
+package com.jun.service;
 
 import com.jun.dto.UserLoginDTO;
 import com.jun.vo.UserLoginVO;

@@ -1,4 +1,4 @@
-package com.jun.weiboserver.mapper;
+package com.jun.mapper;
 
 import com.jun.entity.User;
 import org.apache.ibatis.annotations.Mapper;

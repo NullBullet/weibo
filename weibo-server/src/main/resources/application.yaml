@@ -14,6 +14,19 @@ spring:
       url: jdbc:mysql://${jun.datasource.host}:${jun.datasource.port}/${jun.datasource.database}?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowPublicKeyRetrieval=true
       username: ${jun.datasource.username}
       password: ${jun.datasource.password}
+  data:
+    redis:
+      host: ${jun.redis.host}
+      port: ${jun.redis.port}
+      database: ${jun.redis.database}
+      timeout: ${jun.redis.timeout} # 使用时间格式化
+      password: ${jun.redis.password}
+      lettuce:
+        pool:
+          max-active: ${jun.lettuce.pool.max-active} # 最大连接数
+          max-wait: ${jun.lettuce.pool.max-wait}    # 最大阻塞等待时间(负数表示没限制)
+          max-idle: ${jun.lettuce.pool.max-idle}     # 最大空闲
+          min-idle: ${jun.lettuce.pool.min-idle}     # 最小空闲
 
 mybatis:
   #mapper配置文件
@@ -28,10 +41,9 @@ logging:
   level:
     com:
       jun:
-        weiboserver:
-          mapper: debug
-          service: info
-          controller: info
+        mapper: debug
+        service: info
+        controller: info
 
 jun:
   jwt:

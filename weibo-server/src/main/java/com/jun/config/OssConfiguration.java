@@ -1,4 +1,4 @@
-package com.jun.weiboserver.config;
+package com.jun.config;
 
 import com.jun.properties.OssProperties;
 import com.jun.utils.OssUtil;

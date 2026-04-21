@@ -1,4 +1,4 @@
-package com.jun.weiboserver.service;
+package com.jun.service;
 import com.jun.dto.PageQueryDTO;
 import com.jun.result.PageResult;
 import com.jun.result.Result;

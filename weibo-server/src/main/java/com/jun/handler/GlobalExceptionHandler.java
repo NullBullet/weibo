@@ -1,4 +1,4 @@
-package com.jun.weiboserver.handler;
+package com.jun.handler;
 
 import com.jun.exception.BaseException;
 import com.jun.result.Result;

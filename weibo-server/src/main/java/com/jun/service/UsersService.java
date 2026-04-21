@@ -1,4 +1,4 @@
-package com.jun.weiboserver.service;
+package com.jun.service;
 import com.jun.dto.StatusPageQueryDTO;
 import com.jun.dto.UserProfileDTO;
 import com.jun.result.PageResult;

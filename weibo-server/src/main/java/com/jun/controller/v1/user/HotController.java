@@ -1,11 +1,10 @@
-package com.jun.weiboserver.controller.v1.user;
+package com.jun.controller.v1.user;
 
 import com.jun.dto.PageQueryDTO;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
-import com.jun.vo.HotStatusVO;
 import com.jun.vo.HotTopicVO;
-import com.jun.weiboserver.service.HotService;
+import com.jun.service.HotService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;

@@ -1,4 +1,4 @@
-package com.jun.weiboserver.interceptor;
+package com.jun.interceptor;
 
 import com.jun.constant.JwtClaimsConstant;
 import com.jun.context.BaseContext;
