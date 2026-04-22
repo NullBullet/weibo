@@ -7,6 +7,7 @@ import com.jun.dto.StatusPageQueryDTO;
 import com.jun.dto.UserProfileDTO;
 import com.jun.entity.StatusImage;
 import com.jun.entity.User;
+import com.jun.exception.IsEmpty;
 import com.jun.exception.UploadAvatarException;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
@@ -20,14 +21,13 @@ import com.jun.context.BaseContext;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static com.jun.constant.MessageConstant.UPLOAD_IMAGE_ERROR;
+import static com.jun.constant.MessageConstant.*;
 
 @Slf4j
 @Service
@@ -58,22 +58,24 @@ public class UsersServiceImpl implements UsersService {
         String fileUrl = null;
         if (avatarFile != null && !avatarFile.isEmpty()) {
 
-            try {
-                String avatarPath = usersMapper.getAvatarByUserId(userId);
-                List<String> split = StrUtil.split(avatarPath, "/");
-                List<String> collect = split.stream().skip(3).toList();
-                avatarPath = StrUtil.join("/", collect);
-                ossUtil.delete(avatarPath);
-            } catch (Exception e) {
-                log.error("文件删除失败");
-                throw new UploadAvatarException(UPLOAD_IMAGE_ERROR);
+            if (userProfileDTO.getAvatar()!=null) {
+                try {
+                    String avatarPath = usersMapper.getAvatarByUserId(userId);
+                    List<String> split = StrUtil.split(avatarPath, "/");
+                    List<String> collect = split.stream().skip(3).toList();
+                    avatarPath = StrUtil.join("/", collect);
+                    ossUtil.delete(avatarPath);
+                } catch (Exception e) {
+                    log.error("文件删除失败");
+                    throw new UploadAvatarException(UPLOAD_IMAGE_ERROR);
+                }
             }
 
             try {
                 String folder = "weibo/avatars/";
                 String originalFilename = avatarFile.getOriginalFilename();
                 String extension = originalFilename.substring(originalFilename.lastIndexOf("."));
-                String objectName = folder + UUID.randomUUID().toString() + extension;
+                String objectName = folder + UUID.randomUUID() + extension;
 
                 fileUrl = ossUtil.upload(avatarFile.getInputStream(), objectName);
             } catch (Exception e) {
@@ -102,6 +104,10 @@ public class UsersServiceImpl implements UsersService {
         List<Long> ids = new ArrayList<>();
         for (StatusVO statusVO : page) {
             ids.add(statusVO.getId());
+        }
+
+        if (ids.isEmpty()) {
+            throw new IsEmpty(STATUSES_IS_EMPTY);
         }
 
         List<StatusImage> images = usersMapper.getImageByIds(ids);

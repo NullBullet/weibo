@@ -1,4 +1,4 @@
-package com.jun.weiboserver.mapper;
+package com.jun.mapper;
 
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;

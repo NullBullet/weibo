@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
  * 微博实体类
  */
 @Data
-public class Status implements Serializable {
+public class Statuses implements Serializable {
 
     /**
      * 微博 ID

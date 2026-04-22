@@ -4,7 +4,7 @@ import com.jun.context.BaseContext;
 import com.jun.exception.FollowFailException;
 import com.jun.result.Result;
 import com.jun.service.FollowService;
-import com.jun.weiboserver.mapper.FollowMapper;
+import com.jun.mapper.FollowMapper;
 import jakarta.annotation.Resource;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;

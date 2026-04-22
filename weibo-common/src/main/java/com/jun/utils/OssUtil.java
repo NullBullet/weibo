@@ -14,16 +14,13 @@ import java.io.InputStream;
 
 @Slf4j
 @Data
-//@AllArgsConstructor   手写全参构造放编译器报错（虽然报错也能运行）
+@AllArgsConstructor     //手动注入需要用@value("${}")绑定配置，只是单纯靠属性名匹配，这在某些旧版本或特定配置下可能偶然生效，或者完全不生效
 public class OssUtil {
 
     private String endpoint;
     private String accessKeyId;
     private String accessKeySecret;
     private String bucketName;
-
-    public OssUtil(String endpoint, String accessKeyId, String accessKeySecret, String bucketName) {
-    }
 
     public void delete(String objectName){
         OSS ossClient = new OSSClientBuilder().build(endpoint, accessKeyId, accessKeySecret);

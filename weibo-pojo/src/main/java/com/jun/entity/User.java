@@ -99,4 +99,9 @@ public class User implements Serializable {
      * 删除时间（软删除）
      */
     private LocalDateTime deletedAt;
+
+    /**
+     * 用户类型：0-普通用户，1-大V用户
+     */
+    private Integer userType;
 }

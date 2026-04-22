@@ -9,4 +9,8 @@ public class UsersInfoVO {
     private String avatar;
     private Object stats; //following_count followers_count likes_count
     private String bio;
+    /**
+     * 用户类型：0-普通用户，1-大V用户
+     */
+    private Integer userType;
 }
