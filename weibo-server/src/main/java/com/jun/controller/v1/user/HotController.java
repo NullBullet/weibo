@@ -66,6 +66,7 @@ public class HotController {
                     log.info("请求头中未包含 Token，视为游客访问");
                 }
             }
+        log.info("用户id为：{}",currentUserId);
         return hotService.getPosts(pageQueryDTO,currentUserId);
         }
     }

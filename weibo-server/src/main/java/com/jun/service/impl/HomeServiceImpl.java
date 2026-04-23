@@ -4,7 +4,6 @@ import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import com.jun.dto.HomeQueryDTO;
 import com.jun.entity.StatusImage;
-import com.jun.exception.IsEmpty;
 import com.jun.mapper.HomeMapper;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
@@ -13,13 +12,13 @@ import com.jun.vo.HomeStatusVO;
 import  com.jun.context.BaseContext;
 import com.jun.vo.UserVO;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static com.jun.constant.MessageConstant.FOLLOWING_IS_EMPTY;
-
+@Slf4j
 @Service
 public class HomeServiceImpl implements HomeService {
 
@@ -31,7 +30,8 @@ public class HomeServiceImpl implements HomeService {
         Long userId = BaseContext.getCurrentId();
         List<Long> followingIds = homeMapper.getFollowing(userId);
         if (followingIds==null||followingIds.isEmpty()) {
-            throw new IsEmpty(FOLLOWING_IS_EMPTY);
+            log.info("关注列表为空");
+            return Result.success();
         }
 
         PageHelper.startPage(homeQueryDTO.getPage(),homeQueryDTO.getPageSize());

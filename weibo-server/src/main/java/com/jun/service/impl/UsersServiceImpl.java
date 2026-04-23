@@ -101,13 +101,14 @@ public class UsersServiceImpl implements UsersService {
         PageHelper.startPage(statusPageQueryDTO.getPage(), statusPageQueryDTO.getPageSize());
         Page<StatusVO> page = usersMapper.getPostByUserId(statusPageQueryDTO);
 
+        if (page.isEmpty()) {
+            log.info("帖子列表为空");
+            return Result.success();
+        }
+
         List<Long> ids = new ArrayList<>();
         for (StatusVO statusVO : page) {
             ids.add(statusVO.getId());
-        }
-
-        if (ids.isEmpty()) {
-            throw new IsEmpty(STATUSES_IS_EMPTY);
         }
 
         List<StatusImage> images = usersMapper.getImageByIds(ids);

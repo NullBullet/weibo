@@ -7,12 +7,14 @@ import com.jun.utils.JwtUtil;
 import io.jsonwebtoken.Claims;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.web.servlet.ModelAndView;
 
 /**
  * jwt令牌校验的拦截器
@@ -56,6 +58,14 @@ public class JwtTokenUserInterceptor implements HandlerInterceptor {
             //4、不通过，响应401状态码
             response.setStatus(401);
             return false;
+        }
+    }
+
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
+       BaseContext.removeCurrentId();
+        if (ex != null) {
+            log.error("系统发生严重异常：{}", ex.getMessage());
         }
     }
 }
