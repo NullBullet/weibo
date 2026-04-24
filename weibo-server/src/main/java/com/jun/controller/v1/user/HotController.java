@@ -50,17 +50,20 @@ public class HotController {
 
                 // 2. 判断 Token 是否为空
                 if (token != null && !token.isEmpty()) {
+                    try {
+                        // 3. 直接解析 Token (因为你的 Token 没有 Bearer 前缀，所以不需要 substring)
+                        // 注意：如果 token 是非法的或者过期的，parseJWT 会抛出异常，会被下方的 catch 捕获
+                        Claims claims = JwtUtil.parseJWT(jwtProperties.getUserSecretKey(), token);
 
-                    // 3. 直接解析 Token (因为你的 Token 没有 Bearer 前缀，所以不需要 substring)
-                    // 注意：如果 token 是非法的或者过期的，parseJWT 会抛出异常，会被下方的 catch 捕获
-                    Claims claims = JwtUtil.parseJWT(jwtProperties.getUserSecretKey(), token);
-
-                    // 4. 从 Claims 中提取 userId
-                    // 注意：claims.get("userId") 返回的是 Object，需要转成 String 再转 Long
-                    Object userIdObj = claims.get(USER_ID);
-                    if (userIdObj != null) {
-                        currentUserId = Long.valueOf(userIdObj.toString());
-                        log.info("用户已登录，解析到 ID: {}", currentUserId);
+                        // 4. 从 Claims 中提取 userId
+                        // 注意：claims.get("userId") 返回的是 Object，需要转成 String 再转 Long
+                        Object userIdObj = claims.get(USER_ID);
+                        if (userIdObj != null) {
+                            currentUserId = Long.valueOf(userIdObj.toString());
+                            log.info("用户已登录，解析到 ID: {}", currentUserId);
+                        }
+                    } catch (Exception e) {
+                        log.warn("Token 解析失败: {}", e.getMessage());
                     }
                 } else {
                     log.info("请求头中未包含 Token，视为游客访问");

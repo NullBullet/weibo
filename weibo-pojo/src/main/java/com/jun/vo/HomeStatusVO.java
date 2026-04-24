@@ -24,6 +24,11 @@ public class HomeStatusVO implements Serializable {
     private Long userId;
 
     /**
+     * 当前用户是否点赞该帖子
+     */
+    private Boolean isLiked;
+
+    /**
      * 微博内容
      */
     private String content;

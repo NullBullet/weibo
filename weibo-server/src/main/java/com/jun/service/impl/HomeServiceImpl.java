@@ -13,10 +13,13 @@ import  com.jun.context.BaseContext;
 import com.jun.vo.UserVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
+
+import static com.jun.constant.RedisConstants.LIKE_POST_KEY;
 
 @Slf4j
 @Service
@@ -24,6 +27,8 @@ public class HomeServiceImpl implements HomeService {
 
     @Resource
     private HomeMapper homeMapper;
+    @Resource
+    private RedisTemplate redisTemplate;
 
     @Override
     public Result getPosts(HomeQueryDTO homeQueryDTO) {
@@ -59,6 +64,15 @@ public class HomeServiceImpl implements HomeService {
         for (HomeStatusVO record : records) {
             List<UserVO> user = groupByUserId.get(record.getUserId());
             List<StatusImage> image = groupByStatusId.get(record.getId());
+
+            if (userId==null) {
+                record.setIsLiked(false);
+            }
+            else {
+                Boolean isLiked = redisTemplate.opsForSet().isMember(LIKE_POST_KEY + record.getId(), userId.toString());
+                record.setIsLiked(isLiked);
+            }
+
             record.setUser(user);
             record.setImages(image);
         }

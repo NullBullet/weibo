@@ -21,6 +21,7 @@ import com.jun.context.BaseContext;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -28,6 +29,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.jun.constant.MessageConstant.*;
+import static com.jun.constant.RedisConstants.LIKE_POST_KEY;
 
 @Slf4j
 @Service
@@ -37,6 +39,8 @@ public class UsersServiceImpl implements UsersService {
     private UsersMapper usersMapper;
     @Resource
     private OssUtil ossUtil;
+    @Resource
+    private RedisTemplate redisTemplate;
 
     @Override
     public Result<UsersInfoVO> me() {
@@ -118,6 +122,14 @@ public class UsersServiceImpl implements UsersService {
         for (StatusVO statusVO : page) {
             List<StatusImage> image = groupByStatusId.get(statusVO.getId());
             statusVO.setImages(image);
+
+            if (userId==null) {
+                statusVO.setIsLiked(false);
+            }
+            else {
+                Boolean isLiked = redisTemplate.opsForSet().isMember(LIKE_POST_KEY + statusVO.getId(), userId.toString());
+                statusVO.setIsLiked(isLiked);
+            }
         }
 
         long total = page.getTotal();

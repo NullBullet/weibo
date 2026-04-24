@@ -20,6 +20,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.jun.constant.RedisConstants.FOLLOW_FOLLOWING_KEY;
+import static com.jun.constant.RedisConstants.LIKE_POST_KEY;
 
 @Service
 public class HotServiceImpl implements HotService {
@@ -71,6 +72,14 @@ public class HotServiceImpl implements HotService {
                 record.setIsFollowed(myFollowingsIds.contains(record.getUserId()));
             } else {
                 record.setIsFollowed(null);
+            }
+
+            if (currentUserId==null) {
+                record.setIsLiked(false);
+            }
+            else {
+                Boolean isLiked = redisTemplate.opsForSet().isMember(LIKE_POST_KEY + record.getId(), currentUserId.toString());
+                record.setIsLiked(isLiked);
             }
 
             record.setUser(user);
