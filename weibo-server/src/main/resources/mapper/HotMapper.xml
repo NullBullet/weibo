@@ -9,7 +9,7 @@
         </if>
     </select>
     <select id="getUsersInfoByUserIds" resultType="com.jun.vo.UserVO">
-        select id,nickname name ,avatar from users where id in
+        select id,nickname,avatar from users where id in
             <foreach collection="setIds" separator="," open="(" close=")" item="id">
                 #{id}
             </foreach>

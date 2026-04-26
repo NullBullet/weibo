@@ -1,9 +1,11 @@
 package com.jun.config;
 
+import com.jun.converter.StringToSearchTypeConverter;
 import com.jun.interceptor.JwtTokenUserInterceptor;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.format.FormatterRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurationSupport;
 
@@ -15,7 +17,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurationSupp
 public class WebMvcConfiguration extends WebMvcConfigurationSupport {
     @Resource
     private JwtTokenUserInterceptor jwtTokenUserInterceptor;
-
+    @Resource
+    private StringToSearchTypeConverter stringToSearchTypeConverter;
     /**
      * 注册自定义拦截器
      *
@@ -28,5 +31,11 @@ public class WebMvcConfiguration extends WebMvcConfigurationSupport {
                 .excludePathPatterns("/v1/auth/login")
                 .excludePathPatterns("/v1/hot/topics")
                 .excludePathPatterns("/v1/hot/posts");
+    }
+
+    public void addFormatters(FormatterRegistry registry) {
+        // 将你自定义的转换器添加到注册表中
+        log.info("开始注册转换器...");
+        registry.addConverter(stringToSearchTypeConverter);
     }
 }
