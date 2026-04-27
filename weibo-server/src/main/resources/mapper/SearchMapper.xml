@@ -23,4 +23,11 @@
             #{image}
         </foreach>
     </select>
+    <select id="getUsers" resultType="com.jun.vo.SearchUserVO">
+        select id, nickname,avatar,bio from users
+        <where>
+            <if test="q!=null and q!=''">and nickname like concat("%",#{q},"%")</if>
+        </where>
+        order by created_at desc
+    </select>
 </mapper>

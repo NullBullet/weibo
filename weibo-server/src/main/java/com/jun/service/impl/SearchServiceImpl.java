@@ -4,13 +4,14 @@ import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import com.jun.context.BaseContext;
 import com.jun.dto.SearchResultDTO;
+import com.jun.dto.SearchUsersDTO;
 import com.jun.entity.StatusImage;
 import com.jun.mapper.SearchMapper;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.service.SearchService;
 import com.jun.vo.HotStatusVO;
-import com.jun.vo.StatusVO;
+import com.jun.vo.SearchUserVO;
 import com.jun.vo.UserVO;
 import jakarta.annotation.Resource;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -85,6 +86,31 @@ public class SearchServiceImpl implements SearchService {
 
         long total = page.getTotal();
 
+        return Result.success(new PageResult(total,records));
+    }
+
+    @Override
+    public Result users(SearchUsersDTO searchUsersDTO) {
+        PageHelper.startPage(searchUsersDTO.getPage(),searchUsersDTO.getPageSize());
+        Page<SearchUserVO> page = searchMapper.getUsers(searchUsersDTO);
+        List<SearchUserVO> records = page.getResult();
+
+        Long currentUserId = BaseContext.getCurrentId();
+
+        Set<Object> myFollowings = redisTemplate.opsForSet().members(FOLLOW_FOLLOWING_KEY + currentUserId);
+        Set<Long> myFollowingsIds = myFollowings.stream()
+                .map(id -> Long.valueOf(id.toString()))
+                .collect(Collectors.toSet());
+
+        for (SearchUserVO searchUserVO : page) {
+            if (currentUserId == null || !currentUserId.equals(searchUserVO.getId())) {
+                searchUserVO.setIsFollowed(myFollowingsIds.contains(searchUserVO.getId()));
+            } else {
+                searchUserVO.setIsFollowed(null);
+            }
+        }
+
+        long total = page.getTotal();
         return Result.success(new PageResult(total,records));
     }
 }

@@ -2,9 +2,10 @@ package com.jun.mapper;
 
 import com.github.pagehelper.Page;
 import com.jun.dto.SearchResultDTO;
+import com.jun.dto.SearchUsersDTO;
 import com.jun.entity.StatusImage;
 import com.jun.vo.HotStatusVO;
-import com.jun.vo.StatusVO;
+import com.jun.vo.SearchUserVO;
 import com.jun.vo.UserVO;
 import org.apache.ibatis.annotations.Mapper;
 
@@ -18,4 +19,6 @@ public interface SearchMapper {
     List<UserVO> getUsersInfoByUserIds(Set<Long> setIds);
 
     List<StatusImage> getImageByIds(List<Long> statusIds);
+
+    Page<SearchUserVO> getUsers(SearchUsersDTO searchUsersDTO);
 }
