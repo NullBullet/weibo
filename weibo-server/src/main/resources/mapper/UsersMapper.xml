@@ -29,4 +29,10 @@
                 #{image}
             </foreach>
     </select>
+    <select id="getPostByMissIds" resultType="com.jun.vo.StatusVO">
+        select *from statuses where id in
+            <foreach collection="missIds" item="id" separator="," open="(" close=")">
+                #{id}
+            </foreach>
+    </select>
 </mapper>

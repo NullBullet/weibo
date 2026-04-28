@@ -37,4 +37,6 @@ public interface UsersMapper {
     Page<StatusVO> getPostByUserId(StatusPageQueryDTO statusPageQueryDTO);
 
     List<StatusImage> getImageByIds(List<Long> ids);
+
+    List<StatusVO> getPostByMissIds(List<Long> missIds);
 }
