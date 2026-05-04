@@ -69,6 +69,11 @@ public class StatusVO implements Serializable {
     private Integer repostsCount;
 
     /**
+     * 浏览量
+     */
+    private Integer viewsCount;
+
+    /**
      * 创建时间
      */
     private LocalDateTime createdAt;

@@ -204,26 +204,56 @@ public class UsersServiceImpl implements UsersService {
             finalList.add(map.get(id));
         }
 
-        //todo 转发评论数未实现
         //6. 获取即时点赞数
-        List<String> likeCountKeys = finalList.stream()
-                .map(vo -> LIKE_COUNT_POST_KEY + vo.getId())
-                .toList();
-        List<String> likeCounts = redisTemplate.opsForValue().multiGet(likeCountKeys);
+        for (StatusVO vo : finalList) {
+            String statsKey = POST_STATS_KEY + vo.getId();
 
-        for (int i = 0; i < finalList.size(); i++) {
-            StatusVO vo = finalList.get(i);
-            String realTimeCount = likeCounts.get(i);
+            // 点赞数
+            Object likeObj = redisTemplate.opsForHash().get(statsKey, "likeCount");
 
-            if (realTimeCount != null && !realTimeCount.isEmpty()) {
-                // 用 Redis 里的实时计数覆盖 VO 里的旧计数
-                vo.setAttitudesCount(Integer.valueOf(realTimeCount));
+            // 评论数
+            Object commentObj = redisTemplate.opsForHash().get(statsKey, "commentCount");
+
+            // 转发数
+            Object forwardObj = redisTemplate.opsForHash().get(statsKey, "forwardCount");
+
+            // 浏览数（后面实现）
+            Object viewObj = redisTemplate.opsForHash().get(statsKey, "viewCount");
+
+
+            if (likeObj != null) {
+                // 从 Hash 中获取实时点赞数
+                vo.setAttitudesCount(Integer.parseInt(likeObj.toString()));
             } else {
                 // 如果 Redis 里没计数（比如刚发布的微博）
                 if (vo.getAttitudesCount() == null) {
                     vo.setAttitudesCount(0);
                 }
             }
+
+            if (commentObj != null) {
+                vo.setCommentsCount(Integer.parseInt(commentObj.toString()));
+            } else {
+                if (vo.getCommentsCount() == null) {
+                    vo.setCommentsCount(0);
+                }
+            }
+
+            if (forwardObj != null) {
+                vo.setRepostsCount(Integer.parseInt(forwardObj.toString()));
+            } else {
+                if (vo.getRepostsCount() == null) {
+                    vo.setRepostsCount(0);
+                }
+            }
+
+            /*
+            if (viewObj != null) {
+                vo.setViewsCount(Integer.parseInt(viewObj.toString()));
+            } else {
+                vo.setViewsCount(0);
+            }
+            */
         }
 
         //7. 当前用户是否点赞
