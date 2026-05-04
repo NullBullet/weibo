@@ -10,10 +10,17 @@ import com.jun.service.StatusesService;
 import com.jun.vo.SaveStatusVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.ZoneOffset;
+import java.util.HashMap;
+import java.util.Map;
+
 import static com.jun.constant.MessageConstant.STATUS_PUBLISH_FAIL;
+import static com.jun.constant.RedisConstants.POST_STATS_KEY;
+import static com.jun.constant.RedisConstants.USER_POST_IDS_KEY;
 
 @Slf4j
 @Service
@@ -21,6 +28,8 @@ public class StatusesServiceImpl implements StatusesService {
 
     @Resource
     private StatusesMapper statusesMapper;
+    @Resource
+    private RedisTemplate redisTemplate;
 
     @Transactional
     @Override
@@ -43,6 +52,20 @@ public class StatusesServiceImpl implements StatusesService {
             }
         }
         saveStatusVO = statusesMapper.getStatusById(statusId);
+
+        String postStatsKey = POST_STATS_KEY + statusId;
+        Map<String, Object> map = new HashMap<>();
+        map.put("likeCount",0);
+        map.put("commentCount",0);
+        map.put("forwardCount",0);
+        map.put("viewCount",0);
+        long createTime = saveStatusVO.getCreatedAt().toEpochSecond(ZoneOffset.UTC);
+        map.put("createTime", createTime);
+        redisTemplate.opsForHash().putAll(postStatsKey,map);
+
+        String userPostIdsKey = USER_POST_IDS_KEY + userId;
+        redisTemplate.opsForZSet().add(userPostIdsKey,statusId.toString(),createTime);
+        
         return Result.success(saveStatusVO);
     }
 }
