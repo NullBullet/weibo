@@ -1,6 +1,9 @@
 package com.jun.mapper;
 
+import com.jun.WeiboServerApplicationTests;
 import com.jun.entity.Statuses;
+import com.jun.entity.User;
+import com.jun.entity.UserStatistics;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
 
@@ -14,4 +17,12 @@ public interface TestMapper {
 
     @Select("select * from users")
     Set<Long> getUserId();
+
+    @Select("select *from statuses")
+    List<Statuses> selectList(Object o);
+
+    @Select("select *from users")
+    List<User> selectListusers(Object o);
+
+    boolean insertBatchSomeColumn(List<UserStatistics> statsListToSave);
 }
