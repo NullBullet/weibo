@@ -5,11 +5,14 @@ import lombok.Data;
 import java.io.Serializable;
 
 @Data
-public class PageQueryDTO implements Serializable {
+public class ScrollDTO implements Serializable {
 
-    //页码
-    private Integer page;
+    //热度分数
+    private Double lastScore;
+
+    private Integer offset;
 
     //每页记录数
     private Integer pageSize;
+
 }

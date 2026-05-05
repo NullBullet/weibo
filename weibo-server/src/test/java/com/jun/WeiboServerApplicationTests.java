@@ -12,6 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.util.CollectionUtils;
 
@@ -19,8 +20,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
 
-import static com.jun.constant.RedisConstants.POST_STATS_KEY;
-import static com.jun.constant.RedisConstants.USER_POST_IDS_KEY;
+import static com.jun.constant.RedisConstants.*;
 
 @SpringBootTest
 public class WeiboServerApplicationTests {
@@ -125,7 +125,7 @@ public class WeiboServerApplicationTests {
     }
 
     //初始化user_statistics
-    @Test
+    //@Test
     void initUserStatsTable() {
         System.out.println(">>> 开始初始化用户统计表...");
 

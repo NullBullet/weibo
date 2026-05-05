@@ -19,7 +19,9 @@ public interface HotMapper {
     @Select("select *from statuses order by created_at desc")
     Page<HotStatusVO> getPosts();
 
-    List<UserVO> getUsersInfoByUserIds(Set<Long> setIds);
+    List<UserVO> getUsersInfoByUserIds(List<Long> setIds);
 
     List<StatusImage> getImageByIds(List<Long> ids);
+
+    List<HotStatusVO> getPostByMissIds(List<Long> missIds);
 }

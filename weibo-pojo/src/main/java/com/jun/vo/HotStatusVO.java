@@ -75,6 +75,11 @@ public class HotStatusVO implements Serializable {
     private Integer repostsCount;
 
     /**
+     * 浏览量
+     */
+    private Integer viewsCount;
+
+    /**
      * 创建时间
      */
     private LocalDateTime createdAt;
@@ -84,7 +89,7 @@ public class HotStatusVO implements Serializable {
      */
     private LocalDateTime updatedAt;
 
-    private List<UserVO> user;
+    private UserVO user;
 
     /** 图片列表 (核心：将 StatusImage 转换为 URL 列表) */
     private List<StatusImage> images;

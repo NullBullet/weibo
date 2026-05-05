@@ -1,11 +1,10 @@
 package com.jun.controller.v1.user;
 
-import com.jun.constant.JwtClaimsConstant;
 import com.jun.context.BaseContext;
-import com.jun.dto.PageQueryDTO;
+import com.jun.dto.ScrollDTO;
 import com.jun.properties.JwtProperties;
-import com.jun.result.PageResult;
 import com.jun.result.Result;
+import com.jun.result.ScrollResult;
 import com.jun.utils.JwtUtil;
 import com.jun.vo.HotTopicVO;
 import com.jun.service.HotService;
@@ -39,8 +38,8 @@ public class HotController {
     // 计算热度分(互动总分 = 点赞数 + 评论数*3 + 转发数*5)
     // log_10(互动总分+1)/(小时数+2)^1.8
     @GetMapping("/posts")
-    public Result<PageResult> posts(PageQueryDTO pageQueryDTO, HttpServletRequest request){
-        log.info("获取热门微博{}",pageQueryDTO);
+    public Result<ScrollResult> posts(ScrollDTO scrollDTO, HttpServletRequest request){
+        log.info("获取热门微博{}",scrollDTO);
 
         Long currentUserId = BaseContext.getCurrentId();
         if(currentUserId==null){
@@ -70,6 +69,6 @@ public class HotController {
                 }
             }
         log.info("用户id为：{}",currentUserId);
-        return hotService.getPosts(pageQueryDTO,currentUserId);
+        return hotService.getPosts(scrollDTO,currentUserId);
         }
     }

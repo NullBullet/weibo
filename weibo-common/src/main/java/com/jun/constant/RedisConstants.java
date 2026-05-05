@@ -26,4 +26,9 @@ public class RedisConstants {
     //微博详情
     public static final String POST_DETAIL_KEY = "post:detail:";
     public static final Long POST_DETAIL_TTL = 1800L;
+    public static final Long HOT_POST_DETAIL_TTL = 86400L;
+
+    //用户id、昵称、头像
+    public static final String USER_INFO_KEY = "user:info:";
+    public static final Long USER_INFO_TTL = 86400L;
 }

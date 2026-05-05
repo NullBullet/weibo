@@ -1,0 +1,24 @@
+package com.jun.result;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.io.Serializable;
+import java.util.List;
+
+/**
+ * 封装分页查询结果
+ */
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class ScrollResult implements Serializable {
+
+    private Double lastScore; //最低分
+
+    private Integer offset;
+
+    private List records; //当前页数据集合
+
+}
