@@ -134,17 +134,10 @@ public class HotServiceImpl implements HotService {
 
         //8. 用户信息缓存
         //8.1 收集 userId（去重）
-        Set<Long> userIdSet = new HashSet<>();
-
-        for (Long id : statusIds) {
-            HotStatusVO vo = map.get(id);
-            if (vo != null) {
-                userIdSet.add(vo.getUserId());
-            }
-        }
-
-        //转成 List（保证顺序）
-        List<Long> userIdList = new ArrayList<>(userIdSet);
+        List<Long> userIdList = statusIds.stream()
+                .map(id -> map.get(id).getUserId())
+                .distinct()
+                .toList();
 
         //8.2 批量查 Redis
         List<String> userKeys = userIdList.stream()
@@ -238,38 +231,10 @@ public class HotServiceImpl implements HotService {
             Object viewObj = redisTemplate.opsForHash().get(statsKey, "viewCount");
 
 
-            if (likeObj != null) {
-                // 从 Hash 中获取实时点赞数
-                vo.setAttitudesCount(Integer.parseInt(likeObj.toString()));
-            } else {
-                // 如果 Redis 里没计数（比如刚发布的微博）
-                if (vo.getAttitudesCount() == null) {
-                    vo.setAttitudesCount(0);
-                }
-            }
-
-            if (commentObj != null) {
-                vo.setCommentsCount(Integer.parseInt(commentObj.toString()));
-            } else {
-                if (vo.getCommentsCount() == null) {
-                    vo.setCommentsCount(0);
-                }
-            }
-
-            if (forwardObj != null) {
-                vo.setRepostsCount(Integer.parseInt(forwardObj.toString()));
-            } else {
-                if (vo.getRepostsCount() == null) {
-                    vo.setRepostsCount(0);
-                }
-            }
-
-
-            if (viewObj != null) {
-                vo.setViewsCount(Integer.parseInt(viewObj.toString()));
-            } else {
-                vo.setViewsCount(0);
-            }
+            vo.setAttitudesCount(likeObj == null ? 0 : Integer.parseInt(likeObj.toString()));
+            vo.setCommentsCount(commentObj == null ? 0 : Integer.parseInt(commentObj.toString()));
+            vo.setRepostsCount(forwardObj == null ? 0 : Integer.parseInt(forwardObj.toString()));
+            vo.setViewsCount(viewObj == null ? 0 : Integer.parseInt(viewObj.toString()));
 
         }
 
