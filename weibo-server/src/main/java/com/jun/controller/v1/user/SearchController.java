@@ -22,9 +22,9 @@ public class SearchController {
         SearchType type = searchResultDTO.getSearchType();
         switch (type){
             case COMPREHENSION:
-                return searchService.results(searchResultDTO);
+                return searchService.comprehensionResults(searchResultDTO);
             case REALTIME://从新到旧
-                break;
+                return searchService.realtimeResults(searchResultDTO);
         }
         return null;
     }

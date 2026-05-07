@@ -31,4 +31,8 @@ public class RedisConstants {
     //用户id、昵称、头像
     public static final String USER_INFO_KEY = "user:info:";
     public static final Long USER_INFO_TTL = 86400L;
+
+    //搜索缓存
+    public static final String SEARCH_RESULT_KEY = "search:result:";
+    public static final Long SEARCH_RESULT_TTL = 1800L;
 }

@@ -5,7 +5,9 @@ import com.jun.dto.SearchUsersDTO;
 import com.jun.result.Result;
 
 public interface SearchService {
-    Result results(SearchResultDTO searchResultDTO);
+    Result realtimeResults(SearchResultDTO searchResultDTO);
 
     Result users(SearchUsersDTO searchUsersDTO);
+
+    Result comprehensionResults(SearchResultDTO searchResultDTO);
 }
