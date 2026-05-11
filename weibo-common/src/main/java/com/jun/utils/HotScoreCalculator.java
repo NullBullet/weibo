@@ -42,4 +42,11 @@ public class HotScoreCalculator {
 
         return numerator / denominator;
     }
+
+    public static double calculateSearchHotScore(long viewCount, long likeCount, long commentCount, long repostCount) {
+
+        long interaction = likeCount + commentCount * 3 + repostCount * 5;
+
+        return Math.log10(viewCount + 1) + Math.log10(interaction + 1);
+    }
 }

@@ -9,9 +9,11 @@ import com.jun.dto.SearchResultDTO;
 import com.jun.dto.SearchUsersDTO;
 import com.jun.entity.StatusImage;
 import com.jun.mapper.SearchMapper;
+import com.jun.model.ScoredPost;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.service.SearchService;
+import com.jun.utils.HotScoreCalculator;
 import com.jun.vo.*;
 import jakarta.annotation.Resource;
 import org.springframework.data.redis.connection.RedisStringCommands;
@@ -20,6 +22,10 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.types.Expiration;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -36,7 +42,185 @@ public class SearchServiceImpl implements SearchService {
 
     @Override
     public Result comprehensionResults(SearchResultDTO searchResultDTO) {
-        return null;
+        //1. 缓存查询
+        Long currentUserId = BaseContext.getCurrentId();
+        String keyword = searchResultDTO.getQ();
+        Integer page = searchResultDTO.getPage();
+        Integer pageSize = searchResultDTO.getPageSize();
+
+        //默认只搜索31天
+        LocalDateTime endDate = null;
+        LocalDateTime startDate = null;
+        if (searchResultDTO.getStartDate()==null && searchResultDTO.getEndDate()==null) {
+            endDate = LocalDateTime.now();
+            startDate = endDate.minusDays(31);
+        }
+
+        String cacheKey = SEARCH_RESULT_COMPREHENSIVE_KEY + keyword + ":" + page + ":" + pageSize;
+        Object cacheJson = redisTemplate.opsForValue().get(cacheKey);
+
+        if (cacheJson != null) {
+            List<SearchStatusVO> cacheList;
+            try {
+                cacheList = JSONUtil.parseArray(cacheJson).toList(SearchStatusVO.class);
+            } catch (Exception e) {
+                redisTemplate.delete(cacheKey);
+                cacheList = Collections.emptyList();
+            }
+
+            fillDynamicData(cacheList, currentUserId);
+            Long total = searchMapper.countResultsByTime(keyword, startDate, endDate);
+
+            return Result.success(new PageResult(total, cacheList)
+            );
+        }
+
+        //2. 搜索召回
+        List<Long> recallIds = searchMapper.getComprehensiveResultIds(keyword, startDate, endDate);
+
+        if (recallIds == null || recallIds.isEmpty()) {
+            redisTemplate.opsForValue().set(cacheKey, JSONUtil.toJsonStr(Collections.emptyList()), 60, TimeUnit.SECONDS);
+            return Result.success(new PageResult(0L, Collections.emptyList()));
+        }
+
+        //3. 批量获取帖子详情缓存
+        List<String> postKeys = recallIds.stream().map(id -> POST_DETAIL_KEY + id).toList();
+        List<String> postJsonList = redisTemplate.opsForValue().multiGet(postKeys);
+        if (postJsonList == null) {
+            postJsonList = Collections.emptyList();
+        }
+
+        //4. 组装帖子详情
+        List<SearchStatusVO> posts = new ArrayList<>();
+        List<Long> missIds = new ArrayList<>();
+        for (int i = 0; i < recallIds.size(); i++) {
+            Long id = recallIds.get(i);
+            String json = i < postJsonList.size() ? postJsonList.get(i) : null;
+
+            if (json != null) {
+                posts.add(JSONUtil.toBean(json, SearchStatusVO.class));
+            } else {
+                missIds.add(id);
+            }
+        }
+
+        //5. 缓存未命中 → 查数据库
+        if (!missIds.isEmpty()) {
+
+            List<SearchStatusVO> dbList = searchMapper.getPostByIds(missIds);
+
+            //图片
+            List<Long> ids = dbList.stream().map(SearchStatusVO::getId).toList();
+
+            List<StatusImage> images = searchMapper.getImageByIds(ids);
+
+            Map<Long, List<StatusImage>> imageMap = images.stream().collect(Collectors.groupingBy(StatusImage::getStatusId));
+
+            for (SearchStatusVO vo : dbList) {
+                vo.setImages(imageMap.get(vo.getId())
+                );
+            }
+            //回写Redis
+            redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+
+                for (SearchStatusVO vo : dbList) {
+
+                    String key = POST_DETAIL_KEY + vo.getId();
+                    String value = JSONUtil.toJsonStr(vo);
+                    long expire = POST_DETAIL_TTL + new Random().nextInt(300);
+
+                    connection.stringCommands().set(
+                            key.getBytes(),
+                            value.getBytes(),
+                            Expiration.seconds(expire),
+                            RedisStringCommands.SetOption.UPSERT
+                    );
+                }
+
+                return null;
+            });
+            posts.addAll(dbList);
+        }
+
+        //6. 动态数据填充    点赞数 / 评论数 / 浏览数
+        fillDynamicData(posts, currentUserId);
+
+        //7. 计算综合排序分
+        List<ScoredPost> scoredPosts = new ArrayList<>();
+        for (SearchStatusVO vo : posts) {
+
+            //7.1 关键词相关性
+            double keywordScore = 0;
+            String content = vo.getContent();
+            if (content != null && content.contains(keyword)) {
+                keywordScore += 5;
+            }
+
+            //关键词出现次数
+            int count = 0;
+            int index = 0;
+            if (content != null) {
+                while ((index = content.indexOf(keyword, index)) != -1) {
+                    count++;
+                    index += keyword.length();
+                }
+            }
+
+            keywordScore += Math.log(count + 1) * 3;
+
+            //7.2 时间权重
+            long hours = ChronoUnit.HOURS.between(vo.getCreatedAt(), LocalDateTime.now());
+            double timeScore = 1.0 / Math.pow(hours + 2, 0.3);
+
+            //7.3 热度分
+            Double hotScore = HotScoreCalculator.calculateSearchHotScore(
+                    vo.getViewsCount(),
+                    vo.getAttitudesCount(),
+                    vo.getCommentsCount(),
+                    vo.getRepostsCount()
+            );
+
+            //7.4 最终综合分
+            double finalScore = keywordScore * 0.6 + timeScore * 10 * 0.25 + hotScore * 0.15;
+
+            scoredPosts.add(new ScoredPost(vo, finalScore)
+            );
+        }
+
+        //8. 全局排序
+        scoredPosts.sort((a, b) -> Double.compare(b.getFinalScore(), a.getFinalScore()));
+
+        //9. 应用层分页
+        int start = (page - 1) * pageSize;
+
+        int end = Math.min(start + pageSize, scoredPosts.size());
+
+        List<ScoredPost> pageList = scoredPosts.subList(start, end);
+
+        //10. 提取VO
+        List<SearchStatusVO> result = pageList.stream().map(ScoredPost::getPost).toList();
+
+        //11. 用户信息组装
+        List<Long> userIds = result.stream().map(SearchStatusVO::getUserId).distinct().toList();
+
+        List<UserVO> users = searchMapper.getUsersInfoByUserIds(userIds);
+
+        Map<Long, UserVO> userMap = users.stream().collect(Collectors.toMap(UserVO::getId, v -> v));
+
+        for (SearchStatusVO vo : result) {
+            vo.setUser(userMap.get(vo.getUserId()));
+        }
+
+        //12. 写入搜索缓存
+        redisTemplate.opsForValue().set(
+                cacheKey,
+                JSONUtil.toJsonStr(result),
+                SEARCH_RESULT_TTL + new Random().nextInt(300),
+                TimeUnit.SECONDS
+        );
+
+        //13. 返回结果
+        return Result.success(new PageResult(scoredPosts.size(), result));
     }
 
     @Override
@@ -47,7 +231,7 @@ public class SearchServiceImpl implements SearchService {
         String keyword = searchResultDTO.getQ();
         Integer page = searchResultDTO.getPage();
         Integer pageSize = searchResultDTO.getPageSize();
-        String searchKey = SEARCH_RESULT_KEY + keyword + ":" + page + ":" + pageSize;
+        String searchKey = SEARCH_RESULT_REALTIME_KEY + keyword + ":" + page + ":" + pageSize;
         Object searchJson = redisTemplate.opsForValue().get(searchKey);
         if (searchJson != null) {
             List<SearchStatusVO> bean;
@@ -70,6 +254,7 @@ public class SearchServiceImpl implements SearchService {
         }
 
         //2. 数据库查询 ids
+        searchResultDTO.setPage((page - 1) * pageSize);
         List<Long> statusIds = searchMapper.getResultIds(searchResultDTO);
         if (statusIds.isEmpty()) {
             //无关键字相关的帖子

@@ -10,6 +10,7 @@ import com.jun.vo.SearchUserVO;
 import com.jun.vo.UserVO;
 import org.apache.ibatis.annotations.Mapper;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -28,4 +29,8 @@ public interface SearchMapper {
     List<SearchStatusVO> getPostByIds(List<Long> missIds);
 
     Long countResults(String keyword);
+
+    Long countResultsByTime(String keyword, LocalDateTime startDate, LocalDateTime endDate);
+
+    List<Long> getComprehensiveResultIds(String keyword, LocalDateTime startDate, LocalDateTime endDate);
 }

@@ -36,7 +36,7 @@
             <if test="q!=null and q!=''">and content like concat("%",#{q},"%")</if>
             <if test="startDate!=null and endDate!=null">and created_at between #{startDate} and #{endDate}</if>
         </where>
-        order by created_at desc
+        order by created_at desc limit #{page},#{pageSize}
     </select>
     <select id="getPostByIds" resultType="com.jun.vo.SearchStatusVO">
         select * from statuses where id in
@@ -48,6 +48,20 @@
         select count(0) from statuses
         <where>
             <if test="keyword!=null and keyword!=''">and content like concat("%",#{keyword},"%")</if>
+        </where>
+    </select>
+    <select id="countResultsByTime" resultType="java.lang.Long">
+        select count(0) from statuses
+        <where>
+            <if test="keyword!=null and keyword!=''">and content like concat("%",#{keyword},"%")</if>
+            <if test="startDate!=null and endDate!= null">and created_at between #{startDate} and #{endDate}</if>
+        </where>
+    </select>
+    <select id="getComprehensiveResultIds" resultType="java.lang.Long">
+        select id from statuses
+        <where>
+            <if test="keyword!=null and keyword!=''">and content like concat("%",#{keyword},"%")</if>
+            <if test="startDate!=null and endDate!= null">and created_at between #{startDate} and #{endDate}</if>
         </where>
     </select>
 </mapper>

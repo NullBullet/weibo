@@ -33,6 +33,7 @@ public class RedisConstants {
     public static final Long USER_INFO_TTL = 86400L;
 
     //搜索缓存
-    public static final String SEARCH_RESULT_KEY = "search:result:";
+    public static final String SEARCH_RESULT_REALTIME_KEY = "search:result:realtime:";
+    public static final String SEARCH_RESULT_COMPREHENSIVE_KEY = "search:result:comprehensive:";
     public static final Long SEARCH_RESULT_TTL = 1800L;
 }
