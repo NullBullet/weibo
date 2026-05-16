@@ -1,7 +1,12 @@
 package com.jun.mapper;
 
+import com.jun.dto.RepostDTO;
 import com.jun.dto.ToggleLikeDTO;
+import com.jun.entity.Statuses;
+import com.jun.vo.StatusVO;
 import org.apache.ibatis.annotations.*;
+
+import java.time.LocalDateTime;
 
 @Mapper
 public interface PostMapper {
@@ -16,4 +21,12 @@ public interface PostMapper {
 
     @Update("update user_statistics set likes_count = likes_count + #{likeCount} where user_id = #{userId}")
     void updateStatistics(int likeCount, Long userId);
+
+    @Select("select original_status_id from statuses where id = #{forwardId}")
+    Long getOriginalStatus(Long forwardId);
+
+    void saveForwardStatus(Statuses forwardStatus);
+
+    @Update("update statuses set reposts_count = reposts_count + #{repostCount} where id = #{originalStatusId}")
+    void updateStatusRepostCount(int repostCount, Long originalStatusId);
 }

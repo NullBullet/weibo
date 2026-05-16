@@ -1,5 +1,6 @@
 package com.jun.controller.v1.user;
 
+import com.jun.dto.RepostDTO;
 import com.jun.dto.ToggleLikeDTO;
 import com.jun.result.Result;
 import com.jun.service.PostService;
@@ -24,4 +25,9 @@ public class PostController {
         return postService.toggleLike(toggleLikeDTO);
     }
 
+    @PostMapping("/repost")
+    public Result repost(@RequestBody RepostDTO repostDTO){
+        log.info("转发微博：{}",repostDTO);
+        return postService.repost(repostDTO);
+    }
 }

@@ -1,11 +1,15 @@
 package com.jun.service.impl;
 
 import com.jun.context.BaseContext;
+import com.jun.dto.RepostDTO;
 import com.jun.dto.ToggleLikeDTO;
+import com.jun.entity.Statuses;
 import com.jun.mapper.PostMapper;
 import com.jun.result.Result;
+import com.jun.service.ActivityService;
 import com.jun.service.PostService;
 import com.jun.utils.HotScoreCalculator;
+import com.jun.vo.StatusVO;
 import com.jun.vo.ToggleLikeVO;
 import jakarta.annotation.Resource;
 import lombok.NonNull;
@@ -16,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.Map;
 
 import static com.jun.constant.RedisConstants.*;
@@ -28,6 +33,8 @@ public class PostServiceImpl implements PostService {
     private PostMapper postMapper;
     @Resource
     private RedisTemplate redisTemplate;
+    @Resource
+    private ActivityService activityService;
 
     //todo 未保证redis原子性，MQ异步落库
     @Transactional
@@ -93,5 +100,66 @@ public class PostServiceImpl implements PostService {
         redisTemplate.opsForSet().add(HOT_POST_CANDIDATE_KEY, statusId.toString());
 
         return Result.success(toggleLikeVO);
+    }
+
+    //todo MQ异步落库
+    @Transactional
+    @Override
+    public Result repost(RepostDTO repostDTO) {
+        Long currentId = BaseContext.getCurrentId();
+        //查询被转发微博
+        Long forwardId = repostDTO.getPostId();
+        //获取 OriginalStatusId
+        Long originalStatusId = null;
+        Long originalStatus = postMapper.getOriginalStatus(forwardId);
+
+        originalStatusId = (originalStatus == null) ? forwardId : originalStatus;
+
+        LocalDateTime now = LocalDateTime.now();
+        //创建新的转发微博
+        Statuses forwardStatus = Statuses.builder()
+                .userId(currentId)
+                .content(repostDTO.getContent())
+                .statusType(1)
+                .originalStatusId(originalStatusId)
+                .createdAt(now)
+                .build();
+        //写入 MySQL
+        postMapper.saveForwardStatus(forwardStatus);
+        //写入用户 timeline ZSET
+        String key = USER_POST_IDS_KEY + currentId;
+        long createTimeStamp = now.toEpochSecond(ZoneOffset.UTC);
+        Long forwardStatusId = forwardStatus.getId();
+        redisTemplate.opsForZSet().add(key, forwardStatusId.toString(), createTimeStamp);
+        //原微博 repost_count +1
+        String forwardPostStatusKey = POST_STATS_KEY + forwardStatusId;
+
+        Map<String, String> map = new HashMap<>();
+        map.put("likeCount", "0");
+        map.put("commentCount", "0");
+        //map.put("forwardCount", "0");     转发数应统计到原帖子上
+        map.put("viewCount", "0");
+        map.put("createTime", String.valueOf(createTimeStamp));
+        redisTemplate.opsForHash().putAll(forwardPostStatusKey,map);
+
+        String postStatusKey = POST_STATS_KEY + originalStatusId;
+        postMapper.updateStatusRepostCount(1, originalStatusId);
+        redisTemplate.opsForHash().increment(postStatusKey,"forwardCount",1);
+        //更新热度排行榜
+        Map postStats = redisTemplate.opsForHash().entries(postStatusKey);
+        Long likeCount1 = parseLong(postStats.get("likeCount").toString());
+        Long commentCount = parseLong(postStats.get("commentCount").toString());
+        Long forwardCount = parseLong(postStats.get("forwardCount").toString());
+        Long viewCount = parseLong(postStats.get("viewCount").toString());
+        Long createTime = parseLong(postStats.get("createTime").toString());
+
+        double score = HotScoreCalculator.calculate(viewCount, likeCount1, commentCount, forwardCount, createTime);
+        redisTemplate.opsForZSet().add(HOT_POST_ZSET_KEY, originalStatusId.toString(),score);
+        redisTemplate.opsForSet().add(HOT_POST_CANDIDATE_KEY, originalStatusId.toString());
+
+        //活动系统
+        activityService.handleForwardActivity(originalStatusId,currentId,forwardStatusId);
+
+        return Result.success();
     }
 }
