@@ -85,4 +85,8 @@ public class StatusVO implements Serializable {
 
     /** 图片列表 (核心：将 StatusImage 转换为 URL 列表) */
     private List<StatusImage> images;
+
+    private StatusVO originalStatus;
+
+    private UserVO user;
 }

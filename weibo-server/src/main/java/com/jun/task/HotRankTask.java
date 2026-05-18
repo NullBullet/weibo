@@ -22,7 +22,7 @@ public class HotRankTask {
 
     @Scheduled(cron = "0 */5 * * * *")
     public void refreshHotRank() {
-        log.info("定时更新热门推荐{}：", LocalDateTime.now());
+        log.info("定时更新热门推荐：{}", LocalDateTime.now());
         Set<Object> members = redisTemplate.opsForSet().members(HOT_POST_CANDIDATE_KEY);
 
         if (members == null || members.isEmpty()) {

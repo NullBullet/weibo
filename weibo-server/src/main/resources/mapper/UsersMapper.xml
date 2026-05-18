@@ -35,4 +35,12 @@
                 #{id}
             </foreach>
     </select>
+    <select id="getPostByIds" resultType="com.jun.vo.StatusVO">
+        select s.*,u.id as "user.id",u.nickname as "user.nickname", u.avatar as "user.avatar"
+        from statuses s left join users u on s.user_id = u.id
+        where s.id in
+        <foreach collection="originalIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
 </mapper>

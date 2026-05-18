@@ -170,6 +170,9 @@ public class UsersServiceImpl implements UsersService {
                 }
             }
 
+            //填充转发原微博
+            fillOriginalStatus(dbList);
+
             //4. pipeline 回写缓存
             //executePipelined 的设计初衷是“只发不收”
             //RedisCallback 是为了获得对底层连接的直接控制权，从而在管道（Pipeline）模式下，
@@ -203,6 +206,30 @@ public class UsersServiceImpl implements UsersService {
         for (Long id : ids) {
             finalList.add(map.get(id));
         }
+
+        //填充转发原微博
+        fillOriginalStatus(finalList);
+        redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+
+            for (StatusVO vo : finalList) {
+
+                String cacheKey = POST_DETAIL_KEY + vo.getId();
+
+                String cacheValue = JSONUtil.toJsonStr(vo);
+
+                long expireTime =
+                        POST_DETAIL_TTL + new Random().nextInt(300);
+
+                connection.stringCommands().set(
+                        cacheKey.getBytes(),
+                        cacheValue.getBytes(),
+                        Expiration.seconds(expireTime),
+                        RedisStringCommands.SetOption.UPSERT
+                );
+            }
+
+            return null;
+        });
 
         //6. 获取即时点赞数
         for (StatusVO vo : finalList) {
@@ -247,13 +274,70 @@ public class UsersServiceImpl implements UsersService {
                 }
             }
 
-            /*
             if (viewObj != null) {
                 vo.setViewsCount(Integer.parseInt(viewObj.toString()));
             } else {
                 vo.setViewsCount(0);
             }
-            */
+
+            //更新原微博实时统计
+            StatusVO originalStatus = vo.getOriginalStatus();
+
+            if (originalStatus != null) {
+
+                String originalStatsKey =
+                        POST_STATS_KEY + originalStatus.getId();
+
+                Map<Object, Object> originalStats =
+                        redisTemplate.opsForHash().entries(originalStatsKey);
+
+                if (originalStats != null && !originalStats.isEmpty()) {
+
+                    Object originalLikeObj =
+                            originalStats.get("likeCount");
+
+                    Object originalCommentObj =
+                            originalStats.get("commentCount");
+
+                    Object originalForwardObj =
+                            originalStats.get("forwardCount");
+
+                    Object originalViewObj =
+                            originalStats.get("viewCount");
+
+                    if (originalLikeObj != null) {
+                        originalStatus.setAttitudesCount(
+                                Integer.parseInt(
+                                        originalLikeObj.toString()
+                                )
+                        );
+                    }
+
+                    if (originalCommentObj != null) {
+                        originalStatus.setCommentsCount(
+                                Integer.parseInt(
+                                        originalCommentObj.toString()
+                                )
+                        );
+                    }
+
+                    if (originalForwardObj != null) {
+                        originalStatus.setRepostsCount(
+                                Integer.parseInt(
+                                        originalForwardObj.toString()
+                                )
+                        );
+                    }
+
+                    if (originalViewObj != null) {
+                        originalStatus.setViewsCount(
+                                Integer.parseInt(
+                                        originalViewObj.toString()
+                                )
+                        );
+                    }
+                }
+            }
         }
 
         //7. 当前用户是否点赞
@@ -292,6 +376,76 @@ public class UsersServiceImpl implements UsersService {
         return Result.success(new PageResult(total, finalList));
     }
 
+    private void fillOriginalStatus(List<StatusVO> finalList) {
+
+        // 1. 收集 originalStatusId
+        List<Long> originalIds = finalList.stream()
+                .filter(vo -> vo.getOriginalStatusId() != null)
+                //originalStatus 不存在才查
+                .filter(vo -> vo.getOriginalStatus() == null)
+                .map(StatusVO::getOriginalStatusId)
+                .distinct()
+                .toList();
+
+        if (originalIds.isEmpty()) {
+            return;
+        }
+
+        // 2. 查询原微博
+        List<StatusVO> originalList =
+                usersMapper.getPostByIds(originalIds);
+
+        // 3. 查询原微博图片
+        List<StatusImage> originalImages =
+                usersMapper.getImageByIds(originalIds);
+
+        Map<Long, List<StatusImage>> originalImageMap =
+                originalImages.stream()
+                        .collect(Collectors.groupingBy(
+                                StatusImage::getStatusId
+                        ));
+
+        // 4. 填充原微博信息
+        for (StatusVO vo : originalList) {
+
+            vo.setImages(originalImageMap.get(vo.getId()));
+            if (BaseContext.getCurrentId() == null) {
+
+                vo.setIsLiked(false);
+
+            } else {
+
+                Boolean isLiked = redisTemplate.opsForSet().isMember(
+                        LIKE_POST_KEY + vo.getId(),
+                        BaseContext.getCurrentId().toString()
+                );
+
+                vo.setIsLiked(isLiked != null && isLiked);
+            }
+        }
+
+        // 5. 构建 map
+        Map<Long, StatusVO> originalMap =
+                originalList.stream()
+                        .collect(Collectors.toMap(
+                                StatusVO::getId,
+                                v -> v
+                        ));
+
+        // 6. 回填 originalStatus
+        for (StatusVO vo : finalList) {
+
+            if (vo.getOriginalStatusId() != null) {
+
+                vo.setOriginalStatus(
+                        originalMap.get(
+                                vo.getOriginalStatusId()
+                        )
+                );
+            }
+        }
+    }
+
     private Result<PageResult> loadFromDbAndBuildCache(StatusPageQueryDTO statusPageQueryDTO, Long userId, String zsetKey) {
         statusPageQueryDTO.setUserId(userId);
         PageHelper.startPage(statusPageQueryDTO.getPage(), statusPageQueryDTO.getPageSize());
@@ -326,6 +480,8 @@ public class UsersServiceImpl implements UsersService {
 
         long total = page.getTotal();
         List<StatusVO> record = page.getResult();
+
+        fillOriginalStatus(record);
 
         //写ZSet + 写详情缓存
         redisTemplate.executePipelined((RedisCallback<Object>) connection -> {

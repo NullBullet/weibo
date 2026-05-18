@@ -39,4 +39,6 @@ public interface UsersMapper {
     List<StatusImage> getImageByIds(List<Long> ids);
 
     List<StatusVO> getPostByMissIds(List<Long> missIds);
+
+    List<StatusVO> getPostByIds(List<Long> originalIds);
 }
