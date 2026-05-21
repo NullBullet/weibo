@@ -33,4 +33,6 @@ public interface SearchMapper {
     Long countResultsByTime(String keyword, LocalDateTime startDate, LocalDateTime endDate);
 
     List<Long> getComprehensiveResultIds(String keyword, LocalDateTime startDate, LocalDateTime endDate);
+
+    List<SearchStatusVO> getPostByOriginalIds(List<Long> originalIds);
 }

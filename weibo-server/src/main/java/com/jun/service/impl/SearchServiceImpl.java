@@ -120,6 +120,10 @@ public class SearchServiceImpl implements SearchService {
                 vo.setImages(imageMap.get(vo.getId())
                 );
             }
+
+            //填充转发原微博
+            fillOriginalStatus(dbList, currentUserId);
+
             //回写Redis
             redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
 
@@ -211,6 +215,29 @@ public class SearchServiceImpl implements SearchService {
             vo.setUser(userMap.get(vo.getUserId()));
         }
 
+        //填充转发原微博并回写缓存
+        fillOriginalStatus(result, currentUserId);
+        redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+
+            for (SearchStatusVO vo : result) {
+
+                String detailKey = POST_DETAIL_KEY + vo.getId();
+
+                String cacheValue = JSONUtil.toJsonStr(vo);
+
+                long expireTime = POST_DETAIL_TTL + new Random().nextInt(300);
+
+                connection.stringCommands().set(
+                        cacheKey.getBytes(),
+                        cacheValue.getBytes(),
+                        Expiration.seconds(expireTime),
+                        RedisStringCommands.SetOption.UPSERT
+                );
+            }
+
+            return null;
+        });
+
         //12. 写入搜索缓存
         redisTemplate.opsForValue().set(
                 cacheKey,
@@ -301,6 +328,9 @@ public class SearchServiceImpl implements SearchService {
                 vo.setImages(imageMap.get(vo.getId()));
             }
 
+            //填充转发原微博
+            fillOriginalStatus(dbList, userId);
+
             redisTemplate.executePipelined((RedisCallback<Object>) connection ->{
 
                 for (SearchStatusVO searchStatusVO : dbList) {
@@ -387,6 +417,29 @@ public class SearchServiceImpl implements SearchService {
         }
         //5. 动态数据填充
         fillDynamicData(finalList, userId);
+
+        //填充转发原微博并回写缓存
+        fillOriginalStatus(finalList, userId);
+        redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+
+            for (SearchStatusVO vo : finalList) {
+
+                String cacheKey = POST_DETAIL_KEY + vo.getId();
+
+                String cacheValue = JSONUtil.toJsonStr(vo);
+
+                long expireTime = POST_DETAIL_TTL + new Random().nextInt(300);
+
+                connection.stringCommands().set(
+                        cacheKey.getBytes(),
+                        cacheValue.getBytes(),
+                        Expiration.seconds(expireTime),
+                        RedisStringCommands.SetOption.UPSERT
+                );
+            }
+
+            return null;
+        });
 
         //6. 缓存写入与返回
         redisTemplate.opsForValue().set(
@@ -864,5 +917,172 @@ public class SearchServiceImpl implements SearchService {
 
         long total = page.getTotal();
         return Result.success(new PageResult(total,records));
+    }
+
+    private void fillOriginalStatus(List<SearchStatusVO> finalList, Long currentUserId) {
+
+        //1. 收集 originalIds
+        List<Long> originalIds = finalList.stream()
+                .filter(vo -> vo.getOriginalStatusId() != null)
+                .filter(vo -> vo.getOriginalStatus() == null)
+                .map(SearchStatusVO::getOriginalStatusId)
+                .distinct()
+                .toList();
+
+        if (originalIds.isEmpty()) {
+            return;
+        }
+
+        //2. 先查 Redis
+        List<String> cacheKeys = originalIds.stream()
+                .map(id -> POST_DETAIL_KEY + id)
+                .toList();
+
+        List<String> jsonList = redisTemplate.opsForValue().multiGet(cacheKeys);
+
+        Map<Long, SearchStatusVO> originalMap = new HashMap<>();
+
+        List<Long> missIds = new ArrayList<>();
+
+        for (int i = 0; i < originalIds.size(); i++) {
+            Long id = originalIds.get(i);
+
+            String json = jsonList != null ? jsonList.get(i) : null;
+
+            if (json != null && !json.isEmpty()) {
+                SearchStatusVO vo = JSONUtil.toBean(json, SearchStatusVO.class);
+                originalMap.put(id, vo);
+            } else {
+                missIds.add(id);
+            }
+        }
+
+        //3. miss -> DB
+        if (!missIds.isEmpty()) {
+            List<SearchStatusVO> dbList = searchMapper.getPostByOriginalIds(missIds);
+
+            if (!dbList.isEmpty()) {
+
+                //3.1 图片
+                List<StatusImage> images = searchMapper.getImageByIds(missIds);
+
+                Map<Long, List<StatusImage>> imageMap = images.stream()
+                        .collect(Collectors.groupingBy(StatusImage::getStatusId));
+
+                //3.2 用户
+                List<Long> userIds = dbList.stream()
+                        .map(SearchStatusVO::getUserId)
+                        .distinct()
+                        .toList();
+
+                List<UserVO> users = searchMapper.getUsersInfoByUserIds(userIds);
+
+                Map<Long, UserVO> userMap = users.stream().collect(Collectors.toMap(UserVO::getId, v -> v));
+
+                for (SearchStatusVO vo : dbList) {
+                    //图片
+                    vo.setImages(imageMap.get(vo.getId()));
+                    //用户
+                    vo.setUser(userMap.get(vo.getUserId()));
+                    originalMap.put(vo.getId(), vo);
+                }
+
+                //3.3 回写缓存
+                redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+                    for (SearchStatusVO vo : dbList) {
+                        String key = POST_DETAIL_KEY + vo.getId();
+                        String value = JSONUtil.toJsonStr(vo);
+                        long expire = POST_DETAIL_TTL + new Random().nextInt(300);
+                        connection.stringCommands().set(
+                                key.getBytes(),
+                                value.getBytes(),
+                                Expiration.seconds(expire),
+                                RedisStringCommands.SetOption.UPSERT
+                        );
+                    }
+                    return null;
+                });
+            }
+        }
+
+        //4. 批量填充实时统计
+        List<Object> statsList = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+            for (Long id : originalIds) {
+                connection.hashCommands().hGetAll(
+                        (POST_STATS_KEY + id).getBytes()
+                );
+            }
+            return null;
+        });
+
+        for (int i = 0; i < originalIds.size(); i++) {
+
+            Long id = originalIds.get(i);
+
+            SearchStatusVO vo = originalMap.get(id);
+
+            if (vo == null) {
+                continue;
+            }
+
+            Object obj = statsList.get(i);
+
+            if (obj instanceof Map<?, ?> stats) {
+
+                Object likeObj = stats.get("likeCount".getBytes());
+                Object commentObj = stats.get("commentCount".getBytes());
+                Object repostObj = stats.get("forwardCount".getBytes());
+                Object viewObj = stats.get("viewCount".getBytes());
+
+                vo.setAttitudesCount(likeObj == null ? 0 : Integer.parseInt(new String((byte[]) likeObj)));
+
+                vo.setCommentsCount(commentObj == null ? 0 : Integer.parseInt(new String((byte[]) commentObj)));
+
+                vo.setRepostsCount(repostObj == null ? 0 : Integer.parseInt(new String((byte[]) repostObj)));
+
+                vo.setViewsCount(viewObj == null ? 0 : Integer.parseInt(new String((byte[]) viewObj)));
+            }
+        }
+
+        //5. 批量判断点赞
+        if (currentUserId != null) {
+
+            List<Object> likeResults =
+                    redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+                        for (Long id : originalIds) {
+                            connection.setCommands().sIsMember(
+                                    (LIKE_POST_KEY + id).getBytes(),
+                                    currentUserId.toString().getBytes()
+                            );
+                        }
+                        return null;
+                    });
+
+            for (int i = 0; i < originalIds.size(); i++) {
+
+                SearchStatusVO vo = originalMap.get(originalIds.get(i));
+
+                if (vo == null) {
+                    continue;
+                }
+
+                Boolean liked = (Boolean) likeResults.get(i);
+
+                vo.setIsLiked(liked != null && liked);
+            }
+
+        } else {
+
+            originalMap.values().forEach(vo -> vo.setIsLiked(false));
+        }
+
+        //6. 回填 originalStatus（只填充 originalStatus 为 null 的，避免覆盖已有的）
+        for (SearchStatusVO vo : finalList) {
+
+            if (vo.getOriginalStatusId() != null && vo.getOriginalStatus() == null) {
+
+                vo.setOriginalStatus(originalMap.get(vo.getOriginalStatusId()));
+            }
+        }
     }
 }

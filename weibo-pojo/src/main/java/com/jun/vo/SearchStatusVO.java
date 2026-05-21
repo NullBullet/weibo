@@ -92,4 +92,7 @@ public class SearchStatusVO implements Serializable {
 
     /** 图片列表 (核心：将 StatusImage 转换为 URL 列表) */
     private List<StatusImage> images;
+
+    /** 原微博（转发时使用） */
+    private SearchStatusVO originalStatus;
 }

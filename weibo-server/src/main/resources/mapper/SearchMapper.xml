@@ -64,4 +64,12 @@
             <if test="startDate!=null and endDate!= null">and created_at between #{startDate} and #{endDate}</if>
         </where>
     </select>
+    <select id="getPostByOriginalIds" resultType="com.jun.vo.SearchStatusVO">
+        select s.*,u.id as "user.id",u.nickname as "user.nickname", u.avatar as "user.avatar"
+        from statuses s left join users u on s.user_id = u.id
+        where s.id in
+        <foreach collection="originalIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
 </mapper>
