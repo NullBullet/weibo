@@ -64,6 +64,11 @@ public class Statuses implements Serializable {
     private Integer repostsCount;
 
     /**
+     * 浏览数
+     */
+    private Integer viewsCount;
+
+    /**
      * 创建时间
      */
     private LocalDateTime createdAt;

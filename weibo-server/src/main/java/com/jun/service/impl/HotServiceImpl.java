@@ -107,6 +107,9 @@ public class HotServiceImpl implements HotService {
                 vo.setImages(imageMap.get(vo.getId()));
             }
 
+            //填充转发原微博
+            fillOriginalStatus(dbList, currentUserId);
+
             //6. pipeline 回写缓存
             redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
 
@@ -214,6 +217,30 @@ public class HotServiceImpl implements HotService {
             }
         }
 
+        //填充转发原微博并回写缓存
+        fillOriginalStatus(finalList, currentUserId);
+        redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+
+            for (HotStatusVO vo : finalList) {
+
+                String cacheKey = POST_DETAIL_KEY + vo.getId();
+
+                String cacheValue = JSONUtil.toJsonStr(vo);
+
+                long expireTime =
+                        HOT_POST_DETAIL_TTL + new Random().nextInt(3600);
+
+                connection.stringCommands().set(
+                        cacheKey.getBytes(),
+                        cacheValue.getBytes(),
+                        Expiration.seconds(expireTime),
+                        RedisStringCommands.SetOption.UPSERT
+                );
+            }
+
+            return null;
+        });
+
         //11. 获取即时点赞数
         for (HotStatusVO vo : finalList) {
             String statsKey = POST_STATS_KEY + vo.getId();
@@ -284,5 +311,172 @@ public class HotServiceImpl implements HotService {
 
         //14. 返回
         return Result.success(new ScrollResult(minScore, newOffset, finalList));
+    }
+
+    private void fillOriginalStatus(List<HotStatusVO> finalList, Long currentUserId) {
+
+        //1. 收集 originalIds
+        List<Long> originalIds = finalList.stream()
+                .filter(vo -> vo.getOriginalStatusId() != null)
+                .filter(vo -> vo.getOriginalStatus() == null)
+                .map(HotStatusVO::getOriginalStatusId)
+                .distinct()
+                .toList();
+
+        if (originalIds.isEmpty()) {
+            return;
+        }
+
+        //2. 先查 Redis
+        List<String> cacheKeys = originalIds.stream()
+                .map(id -> POST_DETAIL_KEY + id)
+                .toList();
+
+        List<String> jsonList = redisTemplate.opsForValue().multiGet(cacheKeys);
+
+        Map<Long, HotStatusVO> originalMap = new HashMap<>();
+
+        List<Long> missIds = new ArrayList<>();
+
+        for (int i = 0; i < originalIds.size(); i++) {
+            Long id = originalIds.get(i);
+
+            String json = jsonList != null ? jsonList.get(i) : null;
+
+            if (json != null && !json.isEmpty()) {
+                HotStatusVO vo = JSONUtil.toBean(json, HotStatusVO.class);
+                originalMap.put(id, vo);
+            } else {
+                missIds.add(id);
+            }
+        }
+
+        //3. miss -> DB
+        if (!missIds.isEmpty()) {
+            List<HotStatusVO> dbList = hotMapper.getPostByIds(missIds);
+
+            if (!dbList.isEmpty()) {
+
+                //3.1 图片
+                List<StatusImage> images = hotMapper.getImageByIds(missIds);
+
+                Map<Long, List<StatusImage>> imageMap = images.stream()
+                        .collect(Collectors.groupingBy(StatusImage::getStatusId));
+
+                //3.2 用户
+                List<Long> userIds = dbList.stream()
+                        .map(HotStatusVO::getUserId)
+                        .distinct()
+                        .toList();
+
+                List<UserVO> users = hotMapper.getUsersInfoByUserIds(userIds);
+
+                Map<Long, UserVO> userMap = users.stream().collect(Collectors.toMap(UserVO::getId, v -> v));
+
+                for (HotStatusVO vo : dbList) {
+                    //图片
+                    vo.setImages(imageMap.get(vo.getId()));
+                    //用户
+                    vo.setUser(userMap.get(vo.getUserId()));
+                    originalMap.put(vo.getId(), vo);
+                }
+
+                //3.3 回写缓存
+                redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+                    for (HotStatusVO vo : dbList) {
+                        String key = POST_DETAIL_KEY + vo.getId();
+                        String value = JSONUtil.toJsonStr(vo);
+                        long expire = HOT_POST_DETAIL_TTL + new Random().nextInt(3600);
+                        connection.stringCommands().set(
+                                key.getBytes(),
+                                value.getBytes(),
+                                Expiration.seconds(expire),
+                                RedisStringCommands.SetOption.UPSERT
+                        );
+                    }
+                    return null;
+                });
+            }
+        }
+
+        //4. 批量填充实时统计
+        List<Object> statsList = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+            for (Long id : originalIds) {
+                connection.hashCommands().hGetAll(
+                        (POST_STATS_KEY + id).getBytes()
+                );
+            }
+            return null;
+        });
+
+        for (int i = 0; i < originalIds.size(); i++) {
+
+            Long id = originalIds.get(i);
+
+            HotStatusVO vo = originalMap.get(id);
+
+            if (vo == null) {
+                continue;
+            }
+
+            Object obj = statsList.get(i);
+
+            if (obj instanceof Map<?, ?> stats) {
+
+                Object likeObj = stats.get("likeCount".getBytes());
+                Object commentObj = stats.get("commentCount".getBytes());
+                Object repostObj = stats.get("forwardCount".getBytes());
+                Object viewObj = stats.get("viewCount".getBytes());
+
+                vo.setAttitudesCount(likeObj == null ? 0 : Integer.parseInt(new String((byte[]) likeObj)));
+
+                vo.setCommentsCount(commentObj == null ? 0 : Integer.parseInt(new String((byte[]) commentObj)));
+
+                vo.setRepostsCount(repostObj == null ? 0 : Integer.parseInt(new String((byte[]) repostObj)));
+
+                vo.setViewsCount(viewObj == null ? 0 : Integer.parseInt(new String((byte[]) viewObj)));
+            }
+        }
+
+        //5. 批量判断点赞
+        if (currentUserId != null) {
+
+            List<Object> likeResults =
+                    redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+                        for (Long id : originalIds) {
+                            connection.setCommands().sIsMember(
+                                    (LIKE_POST_KEY + id).getBytes(),
+                                    currentUserId.toString().getBytes()
+                            );
+                        }
+                        return null;
+                    });
+
+            for (int i = 0; i < originalIds.size(); i++) {
+
+                HotStatusVO vo = originalMap.get(originalIds.get(i));
+
+                if (vo == null) {
+                    continue;
+                }
+
+                Boolean liked = (Boolean) likeResults.get(i);
+
+                vo.setIsLiked(liked != null && liked);
+            }
+
+        } else {
+
+            originalMap.values().forEach(vo -> vo.setIsLiked(false));
+        }
+
+        //6. 回填 originalStatus（只填充 originalStatus 为 null 的，避免覆盖已有的）
+        for (HotStatusVO vo : finalList) {
+
+            if (vo.getOriginalStatusId() != null && vo.getOriginalStatus() == null) {
+
+                vo.setOriginalStatus(originalMap.get(vo.getOriginalStatusId()));
+            }
+        }
     }
 }

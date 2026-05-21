@@ -24,4 +24,6 @@ public interface HotMapper {
     List<StatusImage> getImageByIds(List<Long> ids);
 
     List<HotStatusVO> getPostByMissIds(List<Long> missIds);
+
+    List<HotStatusVO> getPostByIds(List<Long> originalIds);
 }
