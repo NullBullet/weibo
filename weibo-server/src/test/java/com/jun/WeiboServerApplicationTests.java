@@ -68,7 +68,7 @@ public class WeiboServerApplicationTests {
     }
 
     //初始化redis微博统计数据
-    //@Test
+    @Test
     void initPostStatsToRedis() {
         System.out.println(">>> 开始从数据库加载微博数据并同步到 Redis...");
 
@@ -99,20 +99,20 @@ public class WeiboServerApplicationTests {
 
                 long createTimeStamp = status.getCreatedAt().toEpochSecond(ZoneOffset.UTC);
 
-                Map<String, String> hashData = new HashMap<>();
-                hashData.put("likeCount", "0");
-                hashData.put("commentCount", "0");
-                hashData.put("forwardCount", "0");
-                hashData.put("viewCount", "0");
-                hashData.put("createTime", String.valueOf(createTimeStamp));
+                Map<String, Object> hashData = new HashMap<>();
+                hashData.put("likeCount", status.getAttitudesCount() != null ? status.getAttitudesCount() : 0);
+                hashData.put("commentCount", status.getCommentsCount() != null ? status.getCommentsCount() : 0);
+                hashData.put("forwardCount", status.getRepostsCount() != null ? status.getRepostsCount() : 0);
+                hashData.put("viewCount", status.getViewsCount() != null ? status.getViewsCount() : 0);
+                hashData.put("createTime", createTimeStamp);
 
                 // 4. 遍历数据，分别用不同的序列化器处理 Field 和 Value
-                for (Map.Entry<String, String> entry : hashData.entrySet()) {
+                for (Map.Entry<String, Object> entry : hashData.entrySet()) {
                     // Field 使用模板配置的序列化器 (可能带引号)
                     byte[] field = hashKeySerializer.serialize(entry.getKey());
 
                     // Value 强制使用 String 序列化器 (不带引号)
-                    byte[] value = stringValueSerializer.serialize(entry.getValue());
+                    byte[] value = stringValueSerializer.serialize(String.valueOf(entry.getValue()));
 
                     // 执行 HSET 命令
                     connection.hSet(rawKey, field, value);

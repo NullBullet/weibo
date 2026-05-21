@@ -432,10 +432,10 @@ public class UsersServiceImpl implements UsersService {
                                 v -> v
                         ));
 
-        // 6. 回填 originalStatus
+        // 6. 回填 originalStatus（只填充 originalStatus 为 null 的，避免覆盖已有的）
         for (StatusVO vo : finalList) {
 
-            if (vo.getOriginalStatusId() != null) {
+            if (vo.getOriginalStatusId() != null && vo.getOriginalStatus() == null) {
 
                 vo.setOriginalStatus(
                         originalMap.get(
