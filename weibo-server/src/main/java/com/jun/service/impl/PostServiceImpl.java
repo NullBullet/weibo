@@ -134,12 +134,11 @@ public class PostServiceImpl implements PostService {
         //原微博 repost_count +1
         String forwardPostStatusKey = POST_STATS_KEY + forwardStatusId;
 
-        Map<String, String> map = new HashMap<>();
-        map.put("likeCount", "0");
-        map.put("commentCount", "0");
-        //map.put("forwardCount", "0");     转发数应统计到原帖子上
-        map.put("viewCount", "0");
-        map.put("createTime", String.valueOf(createTimeStamp));
+        Map<String, Object> map = new HashMap<>();
+        map.put("likeCount",0);
+        map.put("commentCount",0);
+        map.put("viewCount",0);
+        map.put("createTime", createTimeStamp);
         redisTemplate.opsForHash().putAll(forwardPostStatusKey,map);
 
         String postStatusKey = POST_STATS_KEY + originalStatusId;
