@@ -1,6 +1,9 @@
 package com.jun.entity;
 
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -8,6 +11,9 @@ import java.time.LocalDateTime;
 /**
  * 评论实体类
  */
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @Data
 public class Comment implements Serializable {
 
@@ -30,6 +36,11 @@ public class Comment implements Serializable {
      * 父评论 ID（回复评论时）
      */
     private Long parentId;
+
+    /**
+     * 回复的目标用户 ID
+     */
+    private Long replyUserId;
 
     /**
      * 评论内容

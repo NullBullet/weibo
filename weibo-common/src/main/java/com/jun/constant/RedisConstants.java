@@ -36,4 +36,11 @@ public class RedisConstants {
     public static final String SEARCH_RESULT_REALTIME_KEY = "search:result:realtime:";
     public static final String SEARCH_RESULT_COMPREHENSIVE_KEY = "search:result:comprehensive:";
     public static final Long SEARCH_RESULT_TTL = 1800L;
+
+    //一级评论列表    post:comment:list:{postId}:{page}:{pageSize}
+    public static final String POST_COMMENT_LIST_KEY = "post:comment:list:";
+    //二级回复列表    comment:reply:list:{commentId}:{page}:{pageSize}
+    public static final String COMMENT_REPLY_LIST_KEY = "comment:reply:list:";
+    //评论统计    comment:stats:{commentId} -> replyCount, likeCount...
+    public static final String COMMENT_STATS_KEY = "comment:stats:";
 }
