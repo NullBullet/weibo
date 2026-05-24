@@ -340,34 +340,43 @@ public class UsersServiceImpl implements UsersService {
             }
         }
 
-        //7. 当前用户是否点赞
+        //7. 当前用户是否点赞（含原微博）
         if (userId != null) {
-            //7.1 收集所有微博的 LikeKey，用于批量检查
-            List<String> likeKeys = finalList.stream()
-                    .map(vo -> LIKE_POST_KEY + vo.getId())
-                    .toList();
+            //7.1 收集所有微博的 LikeKey（含原微博），用于批量检查
+            List<String> likeKeys = new ArrayList<>();
+            for (StatusVO vo : finalList) {
+                likeKeys.add(LIKE_POST_KEY + vo.getId());
+                if (vo.getOriginalStatus() != null) {
+                    likeKeys.add(LIKE_POST_KEY + vo.getOriginalStatus().getId());
+                }
+            }
 
             //7.2 批量检查当前用户在这些 Key 的 Set 集合中是否存在
-            // 注意：RedisTemplate 没有直接的批量 isMember 方法，我们需要用 executePipelined 来优化性能
             List<Object> results = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-
                 for (String key : likeKeys) {
-                    // 发送 SISMEMBER 命令到管道
                     connection.setCommands().sIsMember(key.getBytes(), userId.toString().getBytes());
                 }
-                return null; // 返回 null，结果会在 executePipelined 的返回值中获取
+                return null;
             });
 
             //7.3 将检查结果回填到 VO 中
-            for (int i = 0; i < finalList.size(); i++) {
-                StatusVO vo = finalList.get(i);
-                // Pipeline 返回的是 List<Boolean>
-                Boolean isMember = (Boolean) results.get(i);
+            int idx = 0;
+            for (StatusVO vo : finalList) {
+                Boolean isMember = (Boolean) results.get(idx++);
                 vo.setIsLiked(isMember != null && isMember);
+
+                if (vo.getOriginalStatus() != null) {
+                    Boolean origIsMember = (Boolean) results.get(idx++);
+                    vo.getOriginalStatus().setIsLiked(origIsMember != null && origIsMember);
+                }
             }
         } else {
-            // 未登录用户，全部设为 false
-            finalList.forEach(vo -> vo.setIsLiked(false));
+            finalList.forEach(vo -> {
+                vo.setIsLiked(false);
+                if (vo.getOriginalStatus() != null) {
+                    vo.getOriginalStatus().setIsLiked(false);
+                }
+            });
         }
 
         //8. total
