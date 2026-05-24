@@ -241,58 +241,54 @@ public class HotServiceImpl implements HotService {
             return null;
         });
 
-        //11. 获取即时点赞数
+        //11. 获取即时统计数据（含原微博统计）
         for (HotStatusVO vo : finalList) {
-            String statsKey = POST_STATS_KEY + vo.getId();
+            fillPostStats(vo);
 
-            // 点赞数
-            Object likeObj = redisTemplate.opsForHash().get(statsKey, "likeCount");
-
-            // 评论数
-            Object commentObj = redisTemplate.opsForHash().get(statsKey, "commentCount");
-
-            // 转发数
-            Object forwardObj = redisTemplate.opsForHash().get(statsKey, "forwardCount");
-
-            // 浏览数（后面实现）
-            Object viewObj = redisTemplate.opsForHash().get(statsKey, "viewCount");
-
-
-            vo.setAttitudesCount(likeObj == null ? 0 : Integer.parseInt(likeObj.toString()));
-            vo.setCommentsCount(commentObj == null ? 0 : Integer.parseInt(commentObj.toString()));
-            vo.setRepostsCount(forwardObj == null ? 0 : Integer.parseInt(forwardObj.toString()));
-            vo.setViewsCount(viewObj == null ? 0 : Integer.parseInt(viewObj.toString()));
-
+            // 更新原微博实时统计
+            HotStatusVO originalStatus = vo.getOriginalStatus();
+            if (originalStatus != null) {
+                fillPostStats(originalStatus);
+            }
         }
 
-        //12. 当前用户是否点赞
+        //12. 当前用户是否点赞（含原微博）
         if (currentUserId != null) {
-            //12.1 收集所有微博的 LikeKey，用于批量检查
-            List<String> likeKeys = finalList.stream()
-                    .map(vo -> LIKE_POST_KEY + vo.getId())
-                    .toList();
+            //12.1 收集所有微博的 LikeKey（含原微博），用于批量检查
+            List<String> likeKeys = new ArrayList<>();
+            for (HotStatusVO vo : finalList) {
+                likeKeys.add(LIKE_POST_KEY + vo.getId());
+                if (vo.getOriginalStatus() != null) {
+                    likeKeys.add(LIKE_POST_KEY + vo.getOriginalStatus().getId());
+                }
+            }
 
-            //12.2 批量检查当前用户在这些 Key 的 Set 集合中是否存在
-            // 注意：RedisTemplate 没有直接的批量 isMember 方法，我们需要用 executePipelined 来优化性能
+            //12.2 批量检查
             List<Object> results = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-
                 for (String key : likeKeys) {
-                    // 发送 SISMEMBER 命令到管道
                     connection.setCommands().sIsMember(key.getBytes(), currentUserId.toString().getBytes());
                 }
-                return null; // 返回 null，结果会在 executePipelined 的返回值中获取
+                return null;
             });
 
-            //12.3 将检查结果回填到 VO 中
-            for (int i = 0; i < finalList.size(); i++) {
-                HotStatusVO vo = finalList.get(i);
-                // Pipeline 返回的是 List<Boolean>
-                Boolean isMember = (Boolean) results.get(i);
+            //12.3 回填
+            int idx = 0;
+            for (HotStatusVO vo : finalList) {
+                Boolean isMember = (Boolean) results.get(idx++);
                 vo.setIsLiked(isMember != null && isMember);
+
+                if (vo.getOriginalStatus() != null) {
+                    Boolean origIsMember = (Boolean) results.get(idx++);
+                    vo.getOriginalStatus().setIsLiked(origIsMember != null && origIsMember);
+                }
             }
         } else {
-            // 未登录用户，全部设为 false
-            finalList.forEach(vo -> vo.setIsLiked(false));
+            finalList.forEach(vo -> {
+                vo.setIsLiked(false);
+                if (vo.getOriginalStatus() != null) {
+                    vo.getOriginalStatus().setIsLiked(false);
+                }
+            });
         }
 
         //13. 计算下一页游标
@@ -478,5 +474,19 @@ public class HotServiceImpl implements HotService {
                 vo.setOriginalStatus(originalMap.get(vo.getOriginalStatusId()));
             }
         }
+    }
+
+    private void fillPostStats(HotStatusVO vo) {
+        String statsKey = POST_STATS_KEY + vo.getId();
+
+        Object likeObj = redisTemplate.opsForHash().get(statsKey, "likeCount");
+        Object commentObj = redisTemplate.opsForHash().get(statsKey, "commentCount");
+        Object forwardObj = redisTemplate.opsForHash().get(statsKey, "forwardCount");
+        Object viewObj = redisTemplate.opsForHash().get(statsKey, "viewCount");
+
+        vo.setAttitudesCount(likeObj == null ? 0 : Integer.parseInt(likeObj.toString()));
+        vo.setCommentsCount(commentObj == null ? 0 : Integer.parseInt(commentObj.toString()));
+        vo.setRepostsCount(forwardObj == null ? 0 : Integer.parseInt(forwardObj.toString()));
+        vo.setViewsCount(viewObj == null ? 0 : Integer.parseInt(viewObj.toString()));
     }
 }
