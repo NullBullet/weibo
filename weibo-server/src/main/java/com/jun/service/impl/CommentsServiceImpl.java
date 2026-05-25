@@ -93,6 +93,57 @@ public class CommentsServiceImpl implements CommentsService {
         return Result.error("评论点赞/取消失败");
     }
 
+    // ======================== 删除评论 ========================
+
+    @Transactional
+    @Override
+    public Result deleteComment(Long commentId) {
+        Long userId = BaseContext.getCurrentId();
+
+        //1. 校验评论是否存在
+        Comment comment = commentsMapper.getCommentById(commentId);
+        if (comment == null || comment.getIsDeleted() == 1) {
+            return Result.error("评论不存在");
+        }
+
+        //2. 校验是否是自己的评论
+        if (!comment.getUserId().equals(userId)) {
+            return Result.error("只能删除自己的评论");
+        }
+
+        Long statusId = comment.getStatusId();
+
+        //3. 计算需要扣减的数量（自身 + 如果是顶级评论则加上未删除回复数）
+        int deleteCount = 1;
+        if (comment.getParentId() == null) {
+            int replyCount = commentsMapper.countNonDeletedReplies(commentId);
+            deleteCount += replyCount;
+        }
+
+        //4. 软删除评论本身
+        commentsMapper.softDeleteComment(commentId);
+
+        //5. 如果是顶级评论，一并软删除其下所有回复
+        if (comment.getParentId() == null) {
+            commentsMapper.softDeleteRepliesByParentId(commentId);
+        }
+
+        //6. DB: statuses.comments_count 扣减
+        commentsMapper.decreaseStatusCommentCount(statusId, deleteCount);
+
+        //7. Redis: 评论计数扣减
+        String statsKey = POST_STATS_KEY + statusId;
+        redisTemplate.opsForHash().increment(statsKey, "commentCount", -deleteCount);
+
+        //8. 删除评论列表缓存
+        deleteCommentListCache(statusId);
+        if (comment.getParentId() != null) {
+            deleteReplyListCache(comment.getParentId());
+        }
+
+        return Result.success();
+    }
+
     // ======================== 一级评论 / 回复评论 ========================
 
     @Transactional

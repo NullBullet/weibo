@@ -37,4 +37,12 @@ public interface CommentsMapper {
     List<UserVO> getUsersInfoByUserIds(@Param("userIds") List<Long> userIds);
 
     int updateStatusCommentCount(@Param("statusId") Long statusId);
+
+    int softDeleteComment(@Param("commentId") Long commentId);
+
+    int softDeleteRepliesByParentId(@Param("parentId") Long parentId);
+
+    int countNonDeletedReplies(@Param("parentId") Long parentId);
+
+    int decreaseStatusCommentCount(@Param("statusId") Long statusId, @Param("count") int count);
 }

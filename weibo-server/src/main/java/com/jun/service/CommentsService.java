@@ -14,4 +14,6 @@ public interface CommentsService {
     Result getReplies(RepliesCommentsResultDTO repliesCommentsResultDTO);
 
     Result toggleCommentLike(ToggleLikeDTO toggleLikeDTO);
+
+    Result deleteComment(Long commentId);
 }

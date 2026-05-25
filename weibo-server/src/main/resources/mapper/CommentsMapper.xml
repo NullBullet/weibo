@@ -73,4 +73,21 @@
     <update id="updateStatusCommentCount">
         update statuses set comments_count = comments_count + 1 where id = #{statusId}
     </update>
+
+    <update id="softDeleteComment">
+        update comments set is_deleted = 1 where id = #{commentId}
+    </update>
+
+    <update id="softDeleteRepliesByParentId">
+        update comments set is_deleted = 1 where parent_id = #{parentId} and is_deleted = 0
+    </update>
+
+    <select id="countNonDeletedReplies" resultType="java.lang.Integer">
+        select count(*) from comments
+        where parent_id = #{parentId} and is_deleted = 0
+    </select>
+
+    <update id="decreaseStatusCommentCount">
+        update statuses set comments_count = GREATEST(0, comments_count - #{count}) where id = #{statusId}
+    </update>
 </mapper>

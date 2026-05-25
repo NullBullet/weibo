@@ -39,4 +39,10 @@ public class CommentsController {
                 .pageSize(pageSize).build();
         return commentsService.getReplies(repliesCommentsResultDTO);
     }
+
+    @DeleteMapping("/{commentId}")
+    public Result deleteComment(@PathVariable Long commentId) {
+        log.info("删除评论:{}", commentId);
+        return commentsService.deleteComment(commentId);
+    }
 }
