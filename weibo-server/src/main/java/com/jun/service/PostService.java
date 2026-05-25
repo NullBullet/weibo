@@ -5,7 +5,7 @@ import com.jun.dto.ToggleLikeDTO;
 import com.jun.result.Result;
 
 public interface PostService {
-    Result toggleLike(ToggleLikeDTO toggleLikeDTO);
+    Result togglePostLike(ToggleLikeDTO toggleLikeDTO);
 
     Result repost(RepostDTO repostDTO);
 }

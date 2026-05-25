@@ -5,13 +5,17 @@ import com.jun.context.BaseContext;
 import com.jun.dto.CommentsResultDTO;
 import com.jun.dto.PostCommentsDTO;
 import com.jun.dto.RepliesCommentsResultDTO;
+import com.jun.dto.ToggleLikeDTO;
 import com.jun.entity.Comment;
 import com.jun.mapper.CommentsMapper;
+import com.jun.mapper.PostMapper;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.service.CommentsService;
 import com.jun.utils.HotScoreCalculator;
 import com.jun.vo.CommentVO;
+import com.jun.vo.ReplyCountVO;
+import com.jun.vo.ToggleLikeVO;
 import com.jun.vo.UserVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -37,7 +41,59 @@ public class CommentsServiceImpl implements CommentsService {
     @Resource
     private CommentsMapper commentsMapper;
     @Resource
+    private PostMapper postMapper;
+    @Resource
     private RedisTemplate redisTemplate;
+
+    // ======================== 评论点赞 ========================
+
+    @Transactional
+    public Result toggleCommentLike(ToggleLikeDTO toggleLikeDTO) {
+        Long userId = BaseContext.getCurrentId();
+        toggleLikeDTO.setUserId(userId);
+        Long commentId = toggleLikeDTO.getTargetId();
+        String likeKey = LIKE_POST_KEY + "comment:" + commentId;
+        String statsKey = COMMENT_STATS_KEY + commentId;
+
+        if (Boolean.TRUE.equals(toggleLikeDTO.getIsLiked())) {
+            Long add = redisTemplate.opsForSet().add(likeKey, userId.toString());
+            if (add == 1) {
+                Long likeCount = redisTemplate.opsForHash().increment(statsKey, "likeCount", 1);
+                postMapper.saveLikeInfo(toggleLikeDTO);
+                postMapper.updateCommentLikeCount(1, commentId);
+
+                ToggleLikeVO vo = ToggleLikeVO.builder().likeCount(likeCount).isLiked(true).build();
+                return Result.success(vo);
+            }
+            if (add == 0) {
+                Object likeCount = redisTemplate.opsForHash().get(statsKey, "likeCount");
+                long count = likeCount == null ? 0 : Long.parseLong(likeCount.toString());
+                return Result.success(ToggleLikeVO.builder().likeCount(count).isLiked(true).build());
+            }
+        } else {
+            Long removed = redisTemplate.opsForSet().remove(likeKey, userId.toString());
+            if (removed == 1) {
+                Long likeCount = redisTemplate.opsForHash().increment(statsKey, "likeCount", -1);
+                if (likeCount < 0) {
+                    likeCount = 0L;
+                    redisTemplate.opsForHash().put(statsKey, "likeCount", "0");
+                }
+                postMapper.deleteLikeInfo(toggleLikeDTO);
+                postMapper.updateCommentLikeCount(-1, commentId);
+
+                ToggleLikeVO vo = ToggleLikeVO.builder().likeCount(likeCount).isLiked(false).build();
+                return Result.success(vo);
+            }
+            if (removed == 0) {
+                Object likeCount = redisTemplate.opsForHash().get(statsKey, "likeCount");
+                long count = likeCount == null ? 0 : Long.parseLong(likeCount.toString());
+                return Result.success(ToggleLikeVO.builder().likeCount(count).isLiked(false).build());
+            }
+        }
+        return Result.error("评论点赞/取消失败");
+    }
+
+    // ======================== 一级评论 / 回复评论 ========================
 
     @Transactional
     @Override
@@ -46,7 +102,6 @@ public class CommentsServiceImpl implements CommentsService {
         Long statusId = postCommentsDTO.getStatusId();
         String content = postCommentsDTO.getContent();
 
-        //1. 参数校验
         if (statusId == null) {
             return Result.error("微博 ID 不能为空");
         }
@@ -55,13 +110,11 @@ public class CommentsServiceImpl implements CommentsService {
         }
         content = content.trim();
 
-        //2. 校验微博是否存在
         Long postId = commentsMapper.getPostById(statusId);
         if (postId == null) {
             return Result.error("微博不存在");
         }
 
-        //3. 校验父评论是否存在（回复评论时）
         Long parentId = postCommentsDTO.getParentId();
         Long replyUserId = postCommentsDTO.getReplyUserId();
         if (parentId != null) {
@@ -77,7 +130,6 @@ public class CommentsServiceImpl implements CommentsService {
             }
         }
 
-        //4. 插入 comments 表
         Comment comment = Comment.builder()
                 .statusId(statusId)
                 .userId(userId)
@@ -88,19 +140,15 @@ public class CommentsServiceImpl implements CommentsService {
 
         commentsMapper.saveComment(comment);
 
-        //5. DB: statuses.comments_count +1
         commentsMapper.updateStatusCommentCount(statusId);
 
-        //6. Redis: 评论计数 +1
         String statsKey = POST_STATS_KEY + statusId;
         redisTemplate.opsForHash().increment(statsKey, "commentCount", 1);
 
-        //7. 回复评论时：父评论 replyCount +1
         if (parentId != null) {
             redisTemplate.opsForHash().increment(COMMENT_STATS_KEY + parentId, "replyCount", 1);
         }
 
-        //8. 更新热度
         Map<Object, Object> stats = redisTemplate.opsForHash().entries(statsKey);
         if (stats != null && !stats.isEmpty()) {
             long likeCount = parseStat(stats, "likeCount");
@@ -117,13 +165,11 @@ public class CommentsServiceImpl implements CommentsService {
             redisTemplate.opsForSet().add(HOT_POST_CANDIDATE_KEY, statusId.toString());
         }
 
-        //9. 删除缓存
         deleteCommentListCache(statusId);
         if (parentId != null) {
             deleteReplyListCache(parentId);
         }
 
-        //10. 组装返回 VO
         CommentVO vo = buildCommentVO(comment, userId);
         return Result.success(vo);
     }
@@ -425,7 +471,6 @@ public class CommentsServiceImpl implements CommentsService {
             }
         }
 
-        // fallback DB
         if (!missIds.isEmpty()) {
             var dbCounts = commentsMapper.countRepliesByCommentIds(missIds);
             for (var rc : dbCounts) {
@@ -480,7 +525,6 @@ public class CommentsServiceImpl implements CommentsService {
             }
             redisTemplate.delete(pagesKey);
         }
-        // 兜底删除默认分页的首页
         redisTemplate.delete(keyPrefix + ":1:10");
     }
 

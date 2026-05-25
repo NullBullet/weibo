@@ -3,6 +3,7 @@ package com.jun.service;
 import com.jun.dto.CommentsResultDTO;
 import com.jun.dto.PostCommentsDTO;
 import com.jun.dto.RepliesCommentsResultDTO;
+import com.jun.dto.ToggleLikeDTO;
 import com.jun.result.Result;
 
 public interface CommentsService {
@@ -11,4 +12,6 @@ public interface CommentsService {
     Result postComments(PostCommentsDTO postCommentsDTO);
 
     Result getReplies(RepliesCommentsResultDTO repliesCommentsResultDTO);
+
+    Result toggleCommentLike(ToggleLikeDTO toggleLikeDTO);
 }

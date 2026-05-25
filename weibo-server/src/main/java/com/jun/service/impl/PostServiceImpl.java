@@ -9,7 +9,6 @@ import com.jun.result.Result;
 import com.jun.service.ActivityService;
 import com.jun.service.PostService;
 import com.jun.utils.HotScoreCalculator;
-import com.jun.vo.StatusVO;
 import com.jun.vo.ToggleLikeVO;
 import jakarta.annotation.Resource;
 import lombok.NonNull;
@@ -17,7 +16,6 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.HashMap;
@@ -39,43 +37,53 @@ public class PostServiceImpl implements PostService {
     //todo 未保证redis原子性，MQ异步落库
     @Transactional
     @Override
-    public Result toggleLike(ToggleLikeDTO toggleLikeDTO) {
+    public Result togglePostLike(ToggleLikeDTO toggleLikeDTO) {
         Long userId = BaseContext.getCurrentId();
         toggleLikeDTO.setUserId(userId);
         Long statusId = toggleLikeDTO.getTargetId();
         String postStatsKey = POST_STATS_KEY + statusId;
+
         if (Boolean.TRUE.equals(toggleLikeDTO.getIsLiked())) {
             Long add = redisTemplate.opsForSet().add(LIKE_POST_KEY + statusId, userId.toString());
-            if(add==1){
+            if (add == 1) {
                 Long likeCount = redisTemplate.opsForHash().increment(postStatsKey, "likeCount", 1);
                 postMapper.saveLikeInfo(toggleLikeDTO);
-                postMapper.updateStatusLikeCount(1,statusId);
-                postMapper.updateStatistics(1,userId);
+                postMapper.updateStatusLikeCount(1, statusId);
+                postMapper.updateStatistics(1, userId);
 
                 ToggleLikeVO toggleLikeVO = ToggleLikeVO.builder().likeCount(likeCount).isLiked(true).build();
-
-                redisTemplate.opsForHash().put(postStatsKey,"likeCount",likeCount);
-
                 return updateHotScore(postStatsKey, statusId, toggleLikeVO);
             }
-        }
-        else {
+            // add == 0 表示已点赞，直接返回成功
+            if (add == 0) {
+                Object likeCount = redisTemplate.opsForHash().get(postStatsKey, "likeCount");
+                long count = likeCount == null ? 0 : parseLong(likeCount.toString());
+                return Result.success(ToggleLikeVO.builder().likeCount(count).isLiked(true).build());
+            }
+        } else {
             Long removed = redisTemplate.opsForSet().remove(LIKE_POST_KEY + statusId, userId.toString());
-
             if (removed == 1) {
+                // Redis 计数减 1，但保证不小于 0
                 Long likeCount = redisTemplate.opsForHash().increment(postStatsKey, "likeCount", -1);
+                if (likeCount < 0) {
+                    likeCount = 0L;
+                    redisTemplate.opsForHash().put(postStatsKey, "likeCount", "0");
+                }
                 postMapper.deleteLikeInfo(toggleLikeDTO);
                 postMapper.updateStatusLikeCount(-1, statusId);
-                postMapper.updateStatistics(-1,userId);
+                postMapper.updateStatistics(-1, userId);
 
                 ToggleLikeVO toggleLikeVO = ToggleLikeVO.builder().likeCount(likeCount).isLiked(false).build();
-
-                redisTemplate.opsForHash().put(postStatsKey,"likeCount",likeCount);
-
                 return updateHotScore(postStatsKey, statusId, toggleLikeVO);
             }
+            // removed == 0 表示已取消点赞，直接返回成功
+            if (removed == 0) {
+                Object likeCount = redisTemplate.opsForHash().get(postStatsKey, "likeCount");
+                long count = likeCount == null ? 0 : parseLong(likeCount.toString());
+                return Result.success(ToggleLikeVO.builder().likeCount(count).isLiked(false).build());
+            }
         }
-        return Result.error("点赞/取关失败");
+        return Result.error("点赞/取消失败");
     }
 
     private @NonNull Result<ToggleLikeVO> updateHotScore(String postStatsKey, Long statusId, ToggleLikeVO toggleLikeVO) {
@@ -89,14 +97,13 @@ public class PostServiceImpl implements PostService {
         boolean hasValidInteraction = (likeCount1 > 0 || commentCount > 0 || forwardCount > 0);
 
         if (!hasValidInteraction) {
-            // 如果没有任何互动，则从候选池和热度榜中移除
             redisTemplate.opsForSet().remove(HOT_POST_CANDIDATE_KEY, statusId.toString());
             redisTemplate.opsForZSet().remove(HOT_POST_ZSET_KEY, statusId.toString());
             return Result.success(toggleLikeVO);
         }
 
         double score = HotScoreCalculator.calculate(viewCount, likeCount1, commentCount, forwardCount, createTime);
-        redisTemplate.opsForZSet().add(HOT_POST_ZSET_KEY, statusId.toString(),score);
+        redisTemplate.opsForZSet().add(HOT_POST_ZSET_KEY, statusId.toString(), score);
         redisTemplate.opsForSet().add(HOT_POST_CANDIDATE_KEY, statusId.toString());
 
         return Result.success(toggleLikeVO);
@@ -135,15 +142,15 @@ public class PostServiceImpl implements PostService {
         String forwardPostStatusKey = POST_STATS_KEY + forwardStatusId;
 
         Map<String, Object> map = new HashMap<>();
-        map.put("likeCount",0);
-        map.put("commentCount",0);
-        map.put("viewCount",0);
+        map.put("likeCount", 0);
+        map.put("commentCount", 0);
+        map.put("viewCount", 0);
         map.put("createTime", createTimeStamp);
-        redisTemplate.opsForHash().putAll(forwardPostStatusKey,map);
+        redisTemplate.opsForHash().putAll(forwardPostStatusKey, map);
 
         String postStatusKey = POST_STATS_KEY + originalStatusId;
         postMapper.updateStatusRepostCount(1, originalStatusId);
-        redisTemplate.opsForHash().increment(postStatusKey,"forwardCount",1);
+        redisTemplate.opsForHash().increment(postStatusKey, "forwardCount", 1);
         //更新热度排行榜
         Map postStats = redisTemplate.opsForHash().entries(postStatusKey);
         Long likeCount1 = parseLong(postStats.get("likeCount").toString());
@@ -153,11 +160,11 @@ public class PostServiceImpl implements PostService {
         Long createTime = parseLong(postStats.get("createTime").toString());
 
         double score = HotScoreCalculator.calculate(viewCount, likeCount1, commentCount, forwardCount, createTime);
-        redisTemplate.opsForZSet().add(HOT_POST_ZSET_KEY, originalStatusId.toString(),score);
+        redisTemplate.opsForZSet().add(HOT_POST_ZSET_KEY, originalStatusId.toString(), score);
         redisTemplate.opsForSet().add(HOT_POST_CANDIDATE_KEY, originalStatusId.toString());
 
         //活动系统
-        activityService.handleForwardActivity(originalStatusId,currentId,forwardStatusId);
+        activityService.handleForwardActivity(originalStatusId, currentId, forwardStatusId);
 
         return Result.success();
     }
