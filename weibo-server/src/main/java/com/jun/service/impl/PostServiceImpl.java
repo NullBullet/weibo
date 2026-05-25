@@ -67,7 +67,7 @@ public class PostServiceImpl implements PostService {
                 Long likeCount = redisTemplate.opsForHash().increment(postStatsKey, "likeCount", -1);
                 if (likeCount < 0) {
                     likeCount = 0L;
-                    redisTemplate.opsForHash().put(postStatsKey, "likeCount", "0");
+                    redisTemplate.opsForHash().put(postStatsKey, "likeCount", 0);
                 }
                 postMapper.deleteLikeInfo(toggleLikeDTO);
                 postMapper.updateStatusLikeCount(-1, statusId);

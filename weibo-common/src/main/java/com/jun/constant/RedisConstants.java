@@ -43,4 +43,6 @@ public class RedisConstants {
     public static final String COMMENT_REPLY_LIST_KEY = "comment:reply:list:";
     //评论统计    comment:stats:{commentId} -> replyCount, likeCount...
     public static final String COMMENT_STATS_KEY = "comment:stats:";
+    //评论被谁点赞
+    public static final String LIKE_COMMENT_KEY = "like:comment:";
 }
