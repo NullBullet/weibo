@@ -193,6 +193,8 @@ public class CommentsServiceImpl implements CommentsService {
         if (cacheJson != null) {
             try {
                 List<CommentVO> cacheList = JSONUtil.parseArray(cacheJson).toList(CommentVO.class);
+                // 缓存命中时刷新动态数据（点赞数、点赞状态从 Redis 实时取）
+                refreshDynamicData(cacheList, userId);
                 Long total = getCommentTotal(statusId);
                 return Result.success(new PageResult(total, cacheList));
             } catch (Exception e) {
@@ -210,7 +212,7 @@ public class CommentsServiceImpl implements CommentsService {
             return Result.success(new PageResult(0L, Collections.emptyList()));
         }
 
-        //3. 构建 VO（replyCount 从 Redis 取）
+        //3. 构建 VO
         List<CommentVO> voList = buildTopCommentVOs(topComments, userId);
 
         //4. 写入缓存，记录已缓存页
@@ -246,6 +248,8 @@ public class CommentsServiceImpl implements CommentsService {
         if (cacheJson != null) {
             try {
                 List<CommentVO> cacheList = JSONUtil.parseArray(cacheJson).toList(CommentVO.class);
+                // 缓存命中时刷新动态数据
+                refreshDynamicData(cacheList, userId);
                 Long total = getReplyTotal(commentId);
                 return Result.success(new PageResult(total, cacheList));
             } catch (Exception e) {
@@ -310,12 +314,20 @@ public class CommentsServiceImpl implements CommentsService {
         //5. 批量查用户
         Map<Long, UserVO> userMap = getUsers(new ArrayList<>(userIdSet));
 
-        //6. 组装
+        //6. 批量从 Redis 取点赞数
+        Map<Long, Integer> likeCountMap = batchGetCommentLikeCounts(commentIds);
+
+        //7. 组装
         List<CommentVO> voList = new ArrayList<>();
         for (Comment comment : topComments) {
             CommentVO vo = buildCommentVO(comment, userId);
             vo.setUser(userMap.get(comment.getUserId()));
             vo.setReplyCount(replyCountMap.getOrDefault(comment.getId(), 0));
+            // 用 Redis 实时点赞数覆盖 DB 值
+            Integer redisLikes = likeCountMap.get(comment.getId());
+            if (redisLikes != null) {
+                vo.setLikesCount(redisLikes);
+            }
 
             List<Comment> replies = repliesGroup.get(comment.getId());
             if (replies != null && !replies.isEmpty()) {
@@ -325,6 +337,11 @@ public class CommentsServiceImpl implements CommentsService {
                             rvo.setUser(userMap.get(r.getUserId()));
                             if (r.getReplyUserId() != null) {
                                 rvo.setReplyUser(userMap.get(r.getReplyUserId()));
+                            }
+                            // 回复的点赞数也从 Redis 覆盖
+                            Integer rLikes = likeCountMap.get(r.getId());
+                            if (rLikes != null) {
+                                rvo.setLikesCount(rLikes);
                             }
                             return rvo;
                         })
@@ -350,11 +367,19 @@ public class CommentsServiceImpl implements CommentsService {
 
         Map<Long, UserVO> userMap = getUsers(new ArrayList<>(userIds));
 
+        // 批量取点赞数
+        List<Long> replyIds = replies.stream().map(Comment::getId).toList();
+        Map<Long, Integer> likeCountMap = batchGetCommentLikeCounts(replyIds);
+
         return replies.stream().map(r -> {
             CommentVO vo = buildCommentVO(r, currentUserId);
             vo.setUser(userMap.get(r.getUserId()));
             if (r.getReplyUserId() != null) {
                 vo.setReplyUser(userMap.get(r.getReplyUserId()));
+            }
+            Integer redisLikes = likeCountMap.get(r.getId());
+            if (redisLikes != null) {
+                vo.setLikesCount(redisLikes);
             }
             return vo;
         }).toList();
@@ -444,8 +469,8 @@ public class CommentsServiceImpl implements CommentsService {
         return Long.parseLong(obj.toString());
     }
 
-    // replyCount（Redis）
-    //批量从 Redis comment:stats:{id} 取 replyCount，miss 的 fallback DB
+    // ======================== replyCount（Redis） ========================
+
     private Map<Long, Integer> getReplyCounts(List<Long> commentIds) {
         if (commentIds.isEmpty()) return Collections.emptyMap();
 
@@ -475,13 +500,12 @@ public class CommentsServiceImpl implements CommentsService {
             var dbCounts = commentsMapper.countRepliesByCommentIds(missIds);
             for (var rc : dbCounts) {
                 result.put(rc.getCommentId(), rc.getCount());
-                // 回写 Redis
-                redisTemplate.opsForHash().put(COMMENT_STATS_KEY + rc.getCommentId(), "replyCount", rc.getCount());
+                redisTemplate.opsForHash().put(COMMENT_STATS_KEY + rc.getCommentId(), "replyCount", rc.getCount().toString());
             }
             for (Long missId : missIds) {
                 if (!result.containsKey(missId)) {
                     result.put(missId, 0);
-                    redisTemplate.opsForHash().put(COMMENT_STATS_KEY + missId, "replyCount", 0);
+                    redisTemplate.opsForHash().put(COMMENT_STATS_KEY + missId, "replyCount", "0");
                 }
             }
         }
@@ -489,7 +513,26 @@ public class CommentsServiceImpl implements CommentsService {
         return result;
     }
 
-    // total
+    // ======================== likeCount 批量获取 ========================
+
+    private Map<Long, Integer> batchGetCommentLikeCounts(List<Long> commentIds) {
+        if (commentIds.isEmpty()) return Collections.emptyMap();
+
+        // 用 RedisTemplate 的 opsForHash 逐个读取，走配置的序列化器
+        // 因为 Hash value 用了 GenericJackson2JsonRedisSerializer，pipeline 原生连接
+        // 返回的是原始字节无法直接 parseInt，这里用模板方法保证反序列化正确
+        Map<Long, Integer> result = new HashMap<>();
+        for (Long id : commentIds) {
+            Object val = redisTemplate.opsForHash().get(COMMENT_STATS_KEY + id, "likeCount");
+            if (val != null) {
+                result.put(id, Integer.parseInt(val.toString()));
+            }
+        }
+        return result;
+    }
+
+    // ======================== total ========================
+
     private Long getCommentTotal(Long statusId) {
         Object obj = redisTemplate.opsForHash().get(POST_STATS_KEY + statusId, "commentCount");
         if (obj == null) {
@@ -504,6 +547,66 @@ public class CommentsServiceImpl implements CommentsService {
             return Long.parseLong(obj.toString());
         }
         return commentsMapper.countRepliesByCommentId(commentId);
+    }
+
+    /**
+     * 缓存命中后刷新动态数据：点赞数从 Redis 实时取，点赞状态从 Redis 实时查
+     */
+    private void refreshDynamicData(List<CommentVO> list, Long userId) {
+        if (list == null || list.isEmpty()) return;
+
+        // 收集所有需要刷新的 commentId（含嵌套 replies）
+        List<Long> allIds = new ArrayList<>();
+        for (CommentVO vo : list) {
+            allIds.add(vo.getId());
+            if (vo.getReplies() != null) {
+                for (CommentVO reply : vo.getReplies()) {
+                    allIds.add(reply.getId());
+                }
+            }
+        }
+
+        // 批量取 likeCount
+        Map<Long, Integer> likeCountMap = batchGetCommentLikeCounts(allIds);
+
+        // 批量取 isLiked
+        Map<Long, Boolean> isLikedMap = new HashMap<>();
+        if (userId != null) {
+            List<String> likeKeys = allIds.stream()
+                    .map(id -> LIKE_POST_KEY + "comment:" + id)
+                    .toList();
+            List<Object> likeVals = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+                for (String key : likeKeys) {
+                    connection.setCommands().sIsMember(key.getBytes(), userId.toString().getBytes());
+                }
+                return null;
+            });
+            for (int i = 0; i < allIds.size(); i++) {
+                Boolean member = (Boolean) likeVals.get(i);
+                isLikedMap.put(allIds.get(i), member != null && member);
+            }
+        }
+
+        // 回填
+        for (CommentVO vo : list) {
+            refreshVO(vo, likeCountMap, isLikedMap);
+            if (vo.getReplies() != null) {
+                for (CommentVO reply : vo.getReplies()) {
+                    refreshVO(reply, likeCountMap, isLikedMap);
+                }
+            }
+        }
+    }
+
+    private void refreshVO(CommentVO vo, Map<Long, Integer> likeCountMap, Map<Long, Boolean> isLikedMap) {
+        Integer count = likeCountMap.get(vo.getId());
+        if (count != null) {
+            vo.setLikesCount(count);
+        }
+        Boolean liked = isLikedMap.get(vo.getId());
+        if (liked != null) {
+            vo.setIsLiked(liked);
+        }
     }
 
     // 缓存失效
