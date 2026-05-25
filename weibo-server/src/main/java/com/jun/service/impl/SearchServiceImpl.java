@@ -456,28 +456,12 @@ public class SearchServiceImpl implements SearchService {
 
         if (list == null || list.isEmpty()) return;
 
-        //1. 批量查询 stats（multiGet）
+        //1. 批量查询 stats（含原微博）
         for (SearchStatusVO vo : list) {
-            String statsKey = POST_STATS_KEY + vo.getId();
-
-            // 点赞数
-            Object likeObj = redisTemplate.opsForHash().get(statsKey, "likeCount");
-
-            // 评论数
-            Object commentObj = redisTemplate.opsForHash().get(statsKey, "commentCount");
-
-            // 转发数
-            Object forwardObj = redisTemplate.opsForHash().get(statsKey, "forwardCount");
-
-            // 浏览数（后面实现）
-            Object viewObj = redisTemplate.opsForHash().get(statsKey, "viewCount");
-
-
-            vo.setAttitudesCount(likeObj == null ? 0 : Integer.parseInt(likeObj.toString()));
-            vo.setCommentsCount(commentObj == null ? 0 : Integer.parseInt(commentObj.toString()));
-            vo.setRepostsCount(forwardObj == null ? 0 : Integer.parseInt(forwardObj.toString()));
-            vo.setViewsCount(viewObj == null ? 0 : Integer.parseInt(viewObj.toString()));
-
+            fillPostStats(vo);
+            if (vo.getOriginalStatus() != null) {
+                fillPostStats(vo.getOriginalStatus());
+            }
         }
 
         //2. 是否点赞（含原微博）
@@ -520,34 +504,20 @@ public class SearchServiceImpl implements SearchService {
                 }
             });
         }
+    }
 
-        //3. 是否关注
-        /*if (userId == null || list.isEmpty()) return;
+    private void fillPostStats(SearchStatusVO vo) {
+        String statsKey = POST_STATS_KEY + vo.getId();
 
-        String followKey = FOLLOW_FOLLOWING_KEY + userId;
+        Object likeObj = redisTemplate.opsForHash().get(statsKey, "likeCount");
+        Object commentObj = redisTemplate.opsForHash().get(statsKey, "commentCount");
+        Object forwardObj = redisTemplate.opsForHash().get(statsKey, "forwardCount");
+        Object viewObj = redisTemplate.opsForHash().get(statsKey, "viewCount");
 
-        //直接取 set
-        Set<Object> myFollowingsRaw = redisTemplate.opsForSet().members(followKey);
-
-        Set<Long> myFollowings = new HashSet<>();
-
-        if (myFollowingsRaw != null) {
-            myFollowings = myFollowingsRaw.stream()
-                    .map(o -> Long.valueOf(o.toString()))
-                    .collect(Collectors.toSet());
-        }
-
-        //3.5 填充到 VO 列表
-        for (SearchStatusVO vo : list) {
-            Long authorId = vo.getUserId();
-            // 如果是自己发布的微博，不需要显示关注按钮
-            if (userId.equals(authorId)) {
-                vo.setIsFollowed(null);
-            } else {
-                // 检查作者 ID 是否在当前用户的关注列表中
-                vo.setIsFollowed(myFollowings.contains(authorId));
-            }
-        }*/
+        vo.setAttitudesCount(likeObj == null ? 0 : Integer.parseInt(likeObj.toString()));
+        vo.setCommentsCount(commentObj == null ? 0 : Integer.parseInt(commentObj.toString()));
+        vo.setRepostsCount(forwardObj == null ? 0 : Integer.parseInt(forwardObj.toString()));
+        vo.setViewsCount(viewObj == null ? 0 : Integer.parseInt(viewObj.toString()));
     }
 
     @Override
