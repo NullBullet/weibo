@@ -259,7 +259,8 @@ public class CommentsServiceImpl implements CommentsService {
         List<Comment> topComments = commentsMapper.getTopComments(statusId, offset, pageSize);
 
         if (topComments.isEmpty()) {
-            redisTemplate.opsForValue().set(cacheKey, "[]", 60, TimeUnit.SECONDS);
+            // 空值缓存 TTL 很短（10s），避免新增评论后长时间不可见
+            redisTemplate.opsForValue().set(cacheKey, "[]", 10, TimeUnit.SECONDS);
             return Result.success(new PageResult(0L, Collections.emptyList()));
         }
 
@@ -314,7 +315,7 @@ public class CommentsServiceImpl implements CommentsService {
         List<Comment> replies = commentsMapper.getRepliesByCommentId(commentId, offset, pageSize);
 
         if (replies.isEmpty()) {
-            redisTemplate.opsForValue().set(cacheKey, "[]", 60, TimeUnit.SECONDS);
+            redisTemplate.opsForValue().set(cacheKey, "[]", 10, TimeUnit.SECONDS);
             return Result.success(new PageResult(0L, Collections.emptyList()));
         }
 
@@ -679,11 +680,20 @@ public class CommentsServiceImpl implements CommentsService {
     private void deleteCommentListCache(Long statusId) {
         String pagesKey = POST_COMMENT_LIST_KEY + statusId + ":pages";
         deleteAllCachedPages(pagesKey, POST_COMMENT_LIST_KEY + statusId);
+        // 兜底：删除常见的首页 key（空值缓存和默认分页）
+        redisTemplate.delete(POST_COMMENT_LIST_KEY + statusId + ":1:3");
+        redisTemplate.delete(POST_COMMENT_LIST_KEY + statusId + ":1:5");
+        redisTemplate.delete(POST_COMMENT_LIST_KEY + statusId + ":1:10");
+        redisTemplate.delete(POST_COMMENT_LIST_KEY + statusId + ":1:20");
     }
 
     private void deleteReplyListCache(Long commentId) {
         String pagesKey = COMMENT_REPLY_LIST_KEY + commentId + ":pages";
         deleteAllCachedPages(pagesKey, COMMENT_REPLY_LIST_KEY + commentId);
+        redisTemplate.delete(COMMENT_REPLY_LIST_KEY + commentId + ":1:3");
+        redisTemplate.delete(COMMENT_REPLY_LIST_KEY + commentId + ":1:5");
+        redisTemplate.delete(COMMENT_REPLY_LIST_KEY + commentId + ":1:10");
+        redisTemplate.delete(COMMENT_REPLY_LIST_KEY + commentId + ":1:20");
     }
 
     private void deleteAllCachedPages(String pagesKey, String keyPrefix) {
@@ -694,7 +704,6 @@ public class CommentsServiceImpl implements CommentsService {
             }
             redisTemplate.delete(pagesKey);
         }
-        redisTemplate.delete(keyPrefix + ":1:10");
     }
 
     // 页追踪
