@@ -25,4 +25,9 @@ public interface TestMapper {
     List<User> selectListusers(Object o);
 
     boolean insertBatchSomeColumn(List<UserStatistics> statsListToSave);
+
+    @org.apache.ibatis.annotations.Update("update user_statistics set following_count = #{followingCount}, followers_count = #{followersCount} where user_id = #{userId}")
+    int updateUserFollowCounts(@org.apache.ibatis.annotations.Param("userId") Long userId,
+                                @org.apache.ibatis.annotations.Param("followingCount") int followingCount,
+                                @org.apache.ibatis.annotations.Param("followersCount") int followersCount);
 }

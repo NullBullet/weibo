@@ -169,5 +169,46 @@ public class WeiboServerApplicationTests {
             System.out.println(">>> 初始化失败或无数据变更。");
         }
     }
+
+    // 从 Redis 读取粉丝数量和关注数量，写入 user_statistics 表
+    @Test
+    void syncFollowCountsToDb() {
+        System.out.println(">>> 开始从 Redis 同步关注/粉丝计数到 user_statistics...");
+
+        List<User> users = testMapper.selectListusers(null);
+        if (users == null || users.isEmpty()) {
+            System.out.println("用户表为空。");
+            return;
+        }
+
+        int updated = 0;
+        for (User user : users) {
+            Long userId = user.getId();
+            boolean needUpdate = false;
+
+            // 从 Redis 读取关注数
+            Object followingObj = redisTemplate.opsForValue().get(COUNT_FOLLOWING_KEY + userId);
+            int followingCount = 0;
+            if (followingObj != null) {
+                followingCount = Integer.parseInt(followingObj.toString());
+            }
+
+            // 从 Redis 读取粉丝数
+            Object fansObj = redisTemplate.opsForValue().get(COUNT_FANS_KEY + userId);
+            int followersCount = 0;
+            if (fansObj != null) {
+                followersCount = Integer.parseInt(fansObj.toString());
+            }
+
+            // 只有当 Redis 中有数据时才更新
+            if (followingCount > 0 || followersCount > 0) {
+                testMapper.updateUserFollowCounts(userId, followingCount, followersCount);
+                updated++;
+                System.out.println("用户 " + userId + ": following=" + followingCount + ", followers=" + followersCount);
+            }
+        }
+
+        System.out.println(">>> 同步完成！共更新 " + updated + " 条记录。");
+    }
 }
 

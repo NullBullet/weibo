@@ -1,8 +1,6 @@
 package com.jun.mapper;
 
-import org.apache.ibatis.annotations.Delete;
-import org.apache.ibatis.annotations.Insert;
-import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.*;
 
 @Mapper
 public interface FollowMapper {
@@ -17,4 +15,10 @@ public interface FollowMapper {
 
     @Delete("delete from user_follower where follower_id = #{currentUserId} and followee_id = #{targetUserId}")
     int deleteFollowing(Long currentUserId, Long targetUserId);
+
+    @Update("update user_statistics set following_count = GREATEST(0, following_count + #{delta}) where user_id = #{userId}")
+    int updateFollowingCount(@Param("userId") Long userId, @Param("delta") int delta);
+
+    @Update("update user_statistics set followers_count = GREATEST(0, followers_count + #{delta}) where user_id = #{userId}")
+    int updateFollowersCount(@Param("userId") Long userId, @Param("delta") int delta);
 }

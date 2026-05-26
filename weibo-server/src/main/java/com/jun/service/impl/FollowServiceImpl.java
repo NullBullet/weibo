@@ -30,6 +30,11 @@ public class FollowServiceImpl implements FollowService {
             throw new FollowFailException(FOLLOW_FAIL);
         }
 
+        // DB: 更新统计计数
+        followMapper.updateFollowingCount(currentUserId, 1);
+        followMapper.updateFollowersCount(targetUserId, 1);
+
+        // Redis: 更新关注/粉丝集合和计数
         redisTemplate.opsForSet().add(FOLLOW_FOLLOWING_KEY + currentUserId.toString(), targetUserId.toString());
         redisTemplate.opsForSet().add(FOLLOW_FANS_KEY + targetUserId, currentUserId.toString());
         redisTemplate.opsForValue().increment(COUNT_FOLLOWING_KEY + currentUserId);
@@ -44,6 +49,12 @@ public class FollowServiceImpl implements FollowService {
         followMapper.deleteFollowing(currentUserId,targetUserId)<=0) {
             throw new FollowFailException(UNFOLLOW_FAIL);
         }
+
+        // DB: 更新统计计数
+        followMapper.updateFollowingCount(currentUserId, -1);
+        followMapper.updateFollowersCount(targetUserId, -1);
+
+        // Redis: 更新关注/粉丝集合和计数
         redisTemplate.opsForSet().remove(FOLLOW_FOLLOWING_KEY + currentUserId, targetUserId.toString());
         redisTemplate.opsForSet().remove(FOLLOW_FANS_KEY + targetUserId, currentUserId.toString());
         redisTemplate.opsForValue().decrement(COUNT_FOLLOWING_KEY + currentUserId);
