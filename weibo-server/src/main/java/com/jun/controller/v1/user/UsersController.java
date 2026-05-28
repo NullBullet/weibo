@@ -1,8 +1,11 @@
 package com.jun.controller.v1.user;
 
-import com.jun.dto.StatusPageQueryDTO;import com.jun.dto.UserProfileDTO;
+import com.jun.dto.ScrollDTO;
+import com.jun.dto.StatusPageQueryDTO;
+import com.jun.dto.UserProfileDTO;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
+import com.jun.result.ScrollResult;
 import com.jun.vo.UsersInfoVO;
 import com.jun.service.UsersService;
 import jakarta.annotation.Resource;
@@ -39,5 +42,17 @@ public class UsersController {
     public Result<PageResult> posts(StatusPageQueryDTO StatusPageQueryDTO){
         log.info("获取用户个人帖子记录{}", StatusPageQueryDTO);
         return usersService.getPost(StatusPageQueryDTO);
+    }
+
+    @GetMapping("/{userId}")
+    public Result<UsersInfoVO> userInfo(@PathVariable Long userId) {
+        log.info("获取指定用户信息:{}", userId);
+        return usersService.getUserInfo(userId);
+    }
+
+    @GetMapping("/{userId}/posts")
+    public Result<ScrollResult> userPosts(@PathVariable Long userId, ScrollDTO scrollDTO) {
+        log.info("获取指定用户帖子列表:{}", userId);
+        return usersService.getUserPosts(userId, scrollDTO);
     }
 }

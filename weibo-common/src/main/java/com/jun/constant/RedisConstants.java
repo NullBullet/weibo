@@ -12,8 +12,8 @@ public class RedisConstants {
     //微博被谁点赞
     public static final String LIKE_POST_KEY = "like:post:";
 
-    //待废弃
-    public static final String LIKE_COUNT_POST_KEY = "like:count:post:";
+    //用户被点赞数
+    public static final String COUNT_USER_LIKES_KEY = "count:user:likes:";
     //likeCount、commentCount、forwardCount、viewCount、createTime
     public static final String POST_STATS_KEY = "post:stats:";
     //热度排序
@@ -45,4 +45,7 @@ public class RedisConstants {
     public static final String COMMENT_STATS_KEY = "comment:stats:";
     //评论被谁点赞
     public static final String LIKE_COMMENT_KEY = "like:comment:";
+    //用户信息缓存    user:profile:{userId}
+    public static final String USER_PROFILE_KEY = "user:profile:";
+    public static final Long USER_PROFILE_TTL = 3600L;
 }

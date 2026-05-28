@@ -8,6 +8,7 @@ import com.jun.entity.User;
 import com.jun.entity.UserStatistics;
 import com.jun.vo.StatusVO;
 import com.jun.vo.UserCountVO;
+import com.jun.vo.UsersInfoVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -22,6 +23,9 @@ public interface UsersMapper {
 
     @Select("select following_count,followers_count,likes_count from user_statistics where user_id=#{userId}")
     UserCountVO countByUserId(Long userId);
+
+    @Select("select id,nickname,avatar,bio,userType from users where id=#{userId}")
+    UsersInfoVO getUserInfoWithoutStats(@Param("userId") Long userId);
 
     int updateProfile(@Param("dto") UserProfileDTO userProfileDTO,@Param("userId") Long userId);
 

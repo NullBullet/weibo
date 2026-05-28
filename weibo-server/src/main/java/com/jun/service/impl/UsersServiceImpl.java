@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
+import com.jun.dto.ScrollDTO;
 import com.jun.dto.StatusPageQueryDTO;
 import com.jun.dto.UserProfileDTO;
 import com.jun.entity.StatusImage;
@@ -11,6 +12,7 @@ import com.jun.entity.User;
 import com.jun.exception.UploadAvatarException;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
+import com.jun.result.ScrollResult;
 import com.jun.utils.OssUtil;
 import com.jun.vo.StatusVO;
 import com.jun.vo.UserCountVO;
@@ -24,6 +26,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.data.redis.connection.RedisStringCommands;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.types.Expiration;
 import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.stereotype.Service;
@@ -31,6 +34,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.ZoneOffset;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.jun.constant.MessageConstant.*;
@@ -114,7 +118,7 @@ public class UsersServiceImpl implements UsersService {
 
         int start = (pageNum - 1) * pageSize;
         int end = start + pageSize - 1;
-        
+
         //1. 从ZSet取对应用户的微博ID（USER_POST_IDS_KEY）
         Set<String> idSet = redisTemplate.opsForZSet().reverseRange(zsetKey, start, end);
 
@@ -529,6 +533,283 @@ public class UsersServiceImpl implements UsersService {
         Long userId = BaseContext.getCurrentId();
         UserProfileDTO userProfileDTO = usersMapper.getProfile(userId);
         return Result.success(userProfileDTO);
+    }
+
+    // ======================== 获取指定用户信息 ========================
+
+    @Override
+    public Result<UsersInfoVO> getUserInfo(Long userId) {
+        if (userId == null) {
+            return Result.error("用户 ID 不能为空");
+        }
+
+        String cacheKey = USER_PROFILE_KEY + userId;
+
+        //1. 查缓存（不含 stats，stats 从 Redis 实时取）
+        Object cacheJson = redisTemplate.opsForValue().get(cacheKey);
+        if (cacheJson != null) {
+            try {
+                UsersInfoVO cached = JSONUtil.toBean(cacheJson.toString(), UsersInfoVO.class);
+                fillUserStats(cached, userId);
+                return Result.success(cached);
+            } catch (Exception e) {
+                log.warn("用户信息缓存反序列化失败 key={}", cacheKey, e);
+                redisTemplate.delete(cacheKey);
+            }
+        }
+
+        //2. 查数据库（只查用户基本信息，不含 stats）
+        UsersInfoVO usersInfoVO = usersMapper.getUserInfoWithoutStats(userId);
+        if (usersInfoVO == null) {
+            return Result.error("用户不存在");
+        }
+
+        //3. 写缓存（只缓存基本信息，不含 stats）
+        redisTemplate.opsForValue().set(
+                cacheKey,
+                JSONUtil.toJsonStr(usersInfoVO),
+                USER_PROFILE_TTL + new Random().nextInt(600),
+                TimeUnit.SECONDS
+        );
+
+        //4. 从 Redis 实时获取 stats
+        fillUserStats(usersInfoVO, userId);
+
+        return Result.success(usersInfoVO);
+    }
+
+    /**
+     * 从 Redis 实时获取关注数、粉丝数、获赞数，回填到 VO
+     */
+    private void fillUserStats(UsersInfoVO vo, Long userId) {
+        Object followingObj = redisTemplate.opsForValue().get(COUNT_FOLLOWING_KEY + userId);
+        Object fansObj = redisTemplate.opsForValue().get(COUNT_FANS_KEY + userId);
+        Object likesObj = redisTemplate.opsForValue().get(COUNT_USER_LIKES_KEY + userId);
+
+        int followingCount = followingObj == null ? 0 : Integer.parseInt(followingObj.toString());
+        int followersCount = fansObj == null ? 0 : Integer.parseInt(fansObj.toString());
+        int likesCount = likesObj == null ? 0 : Integer.parseInt(likesObj.toString());
+
+        // Redis 没有时 fallback DB
+        if (followingObj == null || fansObj == null || likesObj == null) {
+            UserCountVO dbStats = usersMapper.countByUserId(userId);
+            if (dbStats != null) {
+                if (followingObj == null) followingCount = dbStats.getFollowingCount() != null ? dbStats.getFollowingCount() : 0;
+                if (fansObj == null) followersCount = dbStats.getFollowersCount() != null ? dbStats.getFollowersCount() : 0;
+                if (likesObj == null) likesCount = dbStats.getLikesCount() != null ? dbStats.getLikesCount() : 0;
+            }
+        }
+
+        UserCountVO stats = new UserCountVO();
+        stats.setFollowingCount(followingCount);
+        stats.setFollowersCount(followersCount);
+        stats.setLikesCount(likesCount);
+        vo.setStats(stats);
+    }
+
+    // ======================== 获取指定用户帖子列表（游标分页） ========================
+
+    @Override
+    public Result<ScrollResult> getUserPosts(Long userId, ScrollDTO scrollDTO) {
+        if (userId == null) {
+            return Result.error("用户 ID 不能为空");
+        }
+
+        //1. 分页参数处理
+        Double lastScore = scrollDTO.getLastScore();
+        Integer pageSize = scrollDTO.getPageSize();
+        Integer offset = scrollDTO.getOffset();
+        if (pageSize == null || pageSize <= 0) {
+            pageSize = 10;
+        }
+        if (offset == null) {
+            offset = 0;
+        }
+        if (lastScore == null) {
+            lastScore = Double.POSITIVE_INFINITY;
+        }
+
+        String zsetKey = USER_POST_IDS_KEY + userId;
+
+        //2. 从 ZSET 获取帖子 ID（游标分页）
+        Set<ZSetOperations.TypedTuple<String>> tuples =
+                redisTemplate.opsForZSet()
+                        .reverseRangeByScoreWithScores(
+                                zsetKey,
+                                Double.NEGATIVE_INFINITY,
+                                lastScore,
+                                offset,
+                                pageSize
+                        );
+        if (tuples == null || tuples.isEmpty()) {
+            return Result.success(new ScrollResult(null, 0, Collections.emptyList()));
+        }
+
+        List<Long> statusIds = tuples.stream()
+                .map(t -> Long.valueOf(t.getValue()))
+                .toList();
+
+        //3. 批量查缓存
+        List<String> keys = statusIds.stream().map(id -> POST_DETAIL_KEY + id).toList();
+        List<String> jsonList = redisTemplate.opsForValue().multiGet(keys);
+
+        List<StatusVO> result = new ArrayList<>();
+        List<Long> missIds = new ArrayList<>();
+
+        for (int i = 0; i < statusIds.size(); i++) {
+            String json = jsonList.get(i);
+            Long id = statusIds.get(i);
+
+            if (json != null && !json.isEmpty()) {
+                result.add(JSONUtil.toBean(json, StatusVO.class));
+            } else {
+                missIds.add(id);
+            }
+        }
+
+        //4. miss → 查数据库
+        Long currentUserId = BaseContext.getCurrentId();
+        if (!missIds.isEmpty()) {
+            List<StatusVO> dbList = usersMapper.getPostByMissIds(missIds);
+
+            List<Long> missIdList = dbList.stream().map(StatusVO::getId).toList();
+            List<StatusImage> images = usersMapper.getImageByIds(missIdList);
+
+            Map<Long, List<StatusImage>> imageMap = images.stream()
+                    .collect(Collectors.groupingBy(StatusImage::getStatusId));
+
+            for (StatusVO vo : dbList) {
+                vo.setImages(imageMap.get(vo.getId()));
+                if (currentUserId == null) {
+                    vo.setIsLiked(false);
+                } else {
+                    Boolean isLiked = redisTemplate.opsForSet().isMember(LIKE_POST_KEY + vo.getId(), currentUserId.toString());
+                    vo.setIsLiked(isLiked);
+                }
+            }
+
+            fillOriginalStatus(dbList);
+
+            // 回写缓存
+            redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+                for (StatusVO vo : dbList) {
+                    String key = POST_DETAIL_KEY + vo.getId();
+                    String value = JSONUtil.toJsonStr(vo);
+                    long expireTime = POST_DETAIL_TTL + new Random().nextInt(300);
+                    connection.stringCommands().set(
+                            key.getBytes(),
+                            value.getBytes(),
+                            Expiration.seconds(expireTime),
+                            RedisStringCommands.SetOption.UPSERT
+                    );
+                }
+                return null;
+            });
+            result.addAll(dbList);
+        }
+
+        //5. 按 ZSET 顺序重排
+        Map<Long, StatusVO> map = result.stream()
+                .collect(Collectors.toMap(StatusVO::getId, v -> v));
+
+        List<StatusVO> finalList = new ArrayList<>();
+        for (Long id : statusIds) {
+            StatusVO vo = map.get(id);
+            if (vo != null) {
+                finalList.add(vo);
+            }
+        }
+
+        //6. 填充转发原微博并回写缓存
+        fillOriginalStatus(finalList);
+        redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+            for (StatusVO vo : finalList) {
+                String cacheKey = POST_DETAIL_KEY + vo.getId();
+                String cacheValue = JSONUtil.toJsonStr(vo);
+                long expireTime = POST_DETAIL_TTL + new Random().nextInt(300);
+                connection.stringCommands().set(
+                        cacheKey.getBytes(),
+                        cacheValue.getBytes(),
+                        Expiration.seconds(expireTime),
+                        RedisStringCommands.SetOption.UPSERT
+                );
+            }
+            return null;
+        });
+
+        //7. 获取即时统计数据（含原微博）
+        for (StatusVO vo : finalList) {
+            fillPostStats(vo);
+            StatusVO originalStatus = vo.getOriginalStatus();
+            if (originalStatus != null) {
+                fillPostStats(originalStatus);
+            }
+        }
+
+        //8. 当前用户是否点赞（含原微博）
+        if (currentUserId != null) {
+            List<String> likeKeys = new ArrayList<>();
+            for (StatusVO vo : finalList) {
+                likeKeys.add(LIKE_POST_KEY + vo.getId());
+                if (vo.getOriginalStatus() != null) {
+                    likeKeys.add(LIKE_POST_KEY + vo.getOriginalStatus().getId());
+                }
+            }
+
+            List<Object> results = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+                for (String key : likeKeys) {
+                    connection.setCommands().sIsMember(key.getBytes(), currentUserId.toString().getBytes());
+                }
+                return null;
+            });
+
+            int idx = 0;
+            for (StatusVO vo : finalList) {
+                Boolean isMember = (Boolean) results.get(idx++);
+                vo.setIsLiked(isMember != null && isMember);
+
+                if (vo.getOriginalStatus() != null) {
+                    Boolean origIsMember = (Boolean) results.get(idx++);
+                    vo.getOriginalStatus().setIsLiked(origIsMember != null && origIsMember);
+                }
+            }
+        } else {
+            finalList.forEach(vo -> {
+                vo.setIsLiked(false);
+                if (vo.getOriginalStatus() != null) {
+                    vo.getOriginalStatus().setIsLiked(false);
+                }
+            });
+        }
+
+        //9. 计算下一页游标
+        double minScore = tuples.stream()
+                .mapToDouble(ZSetOperations.TypedTuple::getScore)
+                .min()
+                .orElse(0);
+
+        int newOffset = 0;
+        for (ZSetOperations.TypedTuple<String> tuple : tuples) {
+            if (tuple.getScore() == minScore) {
+                newOffset++;
+            }
+        }
+
+        return Result.success(new ScrollResult(minScore, newOffset, finalList));
+    }
+
+    private void fillPostStats(StatusVO vo) {
+        String statsKey = POST_STATS_KEY + vo.getId();
+
+        Object likeObj = redisTemplate.opsForHash().get(statsKey, "likeCount");
+        Object commentObj = redisTemplate.opsForHash().get(statsKey, "commentCount");
+        Object forwardObj = redisTemplate.opsForHash().get(statsKey, "forwardCount");
+        Object viewObj = redisTemplate.opsForHash().get(statsKey, "viewCount");
+
+        vo.setAttitudesCount(likeObj == null ? 0 : Integer.parseInt(likeObj.toString()));
+        vo.setCommentsCount(commentObj == null ? 0 : Integer.parseInt(commentObj.toString()));
+        vo.setRepostsCount(forwardObj == null ? 0 : Integer.parseInt(forwardObj.toString()));
+        vo.setViewsCount(viewObj == null ? 0 : Integer.parseInt(viewObj.toString()));
     }
 
 }
