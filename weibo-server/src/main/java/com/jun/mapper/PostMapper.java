@@ -33,4 +33,7 @@ public interface PostMapper {
 
     @Update("update statuses set reposts_count = reposts_count + #{repostCount} where id = #{originalStatusId}")
     void updateStatusRepostCount(int repostCount, Long originalStatusId);
+
+    @Select("select user_id from statuses where id = #{statusId}")
+    Long getUserIdByStatusId(@Param("statusId") Long statusId);
 }

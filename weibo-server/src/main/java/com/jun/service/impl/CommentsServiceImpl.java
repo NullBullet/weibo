@@ -55,12 +55,24 @@ public class CommentsServiceImpl implements CommentsService {
         String likeKey = LIKE_COMMENT_KEY + commentId;
         String statsKey = COMMENT_STATS_KEY + commentId;
 
+        // 获取评论作者，用于维护作者的获赞数
+        Comment comment = commentsMapper.getCommentById(commentId);
+        if (comment == null) {
+            return Result.error("评论不存在");
+        }
+        Long commentOwnerId = comment.getUserId();
+
         if (Boolean.TRUE.equals(toggleLikeDTO.getIsLiked())) {
             Long add = redisTemplate.opsForSet().add(likeKey, userId.toString());
             if (add == 1) {
                 Long likeCount = redisTemplate.opsForHash().increment(statsKey, "likeCount", 1);
                 postMapper.saveLikeInfo(toggleLikeDTO);
                 postMapper.updateCommentLikeCount(1, commentId);
+                // 评论作者的获赞数 +1（DB + Redis）
+                if (commentOwnerId != null) {
+                    postMapper.updateStatistics(1, commentOwnerId);
+                    redisTemplate.opsForValue().increment(COUNT_USER_LIKES_KEY + commentOwnerId);
+                }
 
                 ToggleLikeVO vo = ToggleLikeVO.builder().likeCount(likeCount).isLiked(true).build();
                 return Result.success(vo);
@@ -80,6 +92,11 @@ public class CommentsServiceImpl implements CommentsService {
                 }
                 postMapper.deleteLikeInfo(toggleLikeDTO);
                 postMapper.updateCommentLikeCount(-1, commentId);
+                // 评论作者的获赞数 -1（DB + Redis）
+                if (commentOwnerId != null) {
+                    postMapper.updateStatistics(-1, commentOwnerId);
+                    redisTemplate.opsForValue().decrement(COUNT_USER_LIKES_KEY + commentOwnerId);
+                }
 
                 ToggleLikeVO vo = ToggleLikeVO.builder().likeCount(likeCount).isLiked(false).build();
                 return Result.success(vo);

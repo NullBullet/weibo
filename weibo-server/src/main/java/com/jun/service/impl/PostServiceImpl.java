@@ -43,13 +43,20 @@ public class PostServiceImpl implements PostService {
         Long statusId = toggleLikeDTO.getTargetId();
         String postStatsKey = POST_STATS_KEY + statusId;
 
+        // 获取被点赞帖子的发布者，用于维护 COUNT_USER_LIKES_KEY
+        Long postOwnerId = postMapper.getUserIdByStatusId(statusId);
+
         if (Boolean.TRUE.equals(toggleLikeDTO.getIsLiked())) {
             Long add = redisTemplate.opsForSet().add(LIKE_POST_KEY + statusId, userId.toString());
             if (add == 1) {
                 Long likeCount = redisTemplate.opsForHash().increment(postStatsKey, "likeCount", 1);
                 postMapper.saveLikeInfo(toggleLikeDTO);
                 postMapper.updateStatusLikeCount(1, statusId);
-                postMapper.updateStatistics(1, userId);
+                // 帖子作者的获赞数 +1（DB + Redis）
+                if (postOwnerId != null) {
+                    postMapper.updateStatistics(1, postOwnerId);
+                    redisTemplate.opsForValue().increment(COUNT_USER_LIKES_KEY + postOwnerId);
+                }
 
                 ToggleLikeVO toggleLikeVO = ToggleLikeVO.builder().likeCount(likeCount).isLiked(true).build();
                 return updateHotScore(postStatsKey, statusId, toggleLikeVO);
@@ -71,7 +78,11 @@ public class PostServiceImpl implements PostService {
                 }
                 postMapper.deleteLikeInfo(toggleLikeDTO);
                 postMapper.updateStatusLikeCount(-1, statusId);
-                postMapper.updateStatistics(-1, userId);
+                // 帖子作者的获赞数 -1（DB + Redis）
+                if (postOwnerId != null) {
+                    postMapper.updateStatistics(-1, postOwnerId);
+                    redisTemplate.opsForValue().decrement(COUNT_USER_LIKES_KEY + postOwnerId);
+                }
 
                 ToggleLikeVO toggleLikeVO = ToggleLikeVO.builder().likeCount(likeCount).isLiked(false).build();
                 return updateHotScore(postStatsKey, statusId, toggleLikeVO);
