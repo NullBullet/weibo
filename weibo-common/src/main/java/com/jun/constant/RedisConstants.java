@@ -5,15 +5,11 @@ public class RedisConstants {
     public static final String FOLLOW_FOLLOWING_KEY = "follow:following:";
     //被关注
     public static final String FOLLOW_FANS_KEY = "follow:fans:";
-    //关注数量
-    public static final String COUNT_FOLLOWING_KEY = "count:following:";
-    //被关注数量
-    public static final String COUNT_FANS_KEY = "count:fans:";
+    //用户统计    user:stats:{userId} -> followingCount, followersCount, likesCount
+    public static final String USER_STATS_KEY = "user:stats:";
     //微博被谁点赞
     public static final String LIKE_POST_KEY = "like:post:";
 
-    //用户被点赞数
-    public static final String COUNT_USER_LIKES_KEY = "count:user:likes:";
     //likeCount、commentCount、forwardCount、viewCount、createTime
     public static final String POST_STATS_KEY = "post:stats:";
     //热度排序

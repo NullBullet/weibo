@@ -71,7 +71,7 @@ public class CommentsServiceImpl implements CommentsService {
                 // 评论作者的获赞数 +1（DB + Redis）
                 if (commentOwnerId != null) {
                     postMapper.updateStatistics(1, commentOwnerId);
-                    redisTemplate.opsForValue().increment(COUNT_USER_LIKES_KEY + commentOwnerId);
+                    redisTemplate.opsForHash().increment(USER_STATS_KEY + commentOwnerId, "likesCount", 1);
                 }
 
                 ToggleLikeVO vo = ToggleLikeVO.builder().likeCount(likeCount).isLiked(true).build();
@@ -95,7 +95,7 @@ public class CommentsServiceImpl implements CommentsService {
                 // 评论作者的获赞数 -1（DB + Redis）
                 if (commentOwnerId != null) {
                     postMapper.updateStatistics(-1, commentOwnerId);
-                    redisTemplate.opsForValue().decrement(COUNT_USER_LIKES_KEY + commentOwnerId);
+                    redisTemplate.opsForHash().increment(USER_STATS_KEY + commentOwnerId, "likesCount", -1);
                 }
 
                 ToggleLikeVO vo = ToggleLikeVO.builder().likeCount(likeCount).isLiked(false).build();

@@ -171,7 +171,7 @@ public class WeiboServerApplicationTests {
     }
 
     // 从 Redis 读取粉丝数量和关注数量，写入 user_statistics 表
-    @Test
+    //@Test
     void syncFollowCountsToDb() {
         System.out.println(">>> 开始从 Redis 同步关注/粉丝计数到 user_statistics...");
 
@@ -184,17 +184,17 @@ public class WeiboServerApplicationTests {
         int updated = 0;
         for (User user : users) {
             Long userId = user.getId();
-            boolean needUpdate = false;
+            String statsKey = USER_STATS_KEY + userId;
 
-            // 从 Redis 读取关注数
-            Object followingObj = redisTemplate.opsForValue().get(COUNT_FOLLOWING_KEY + userId);
+            // 从 Redis Hash 读取关注数
+            Object followingObj = redisTemplate.opsForHash().get(statsKey, "followingCount");
             int followingCount = 0;
             if (followingObj != null) {
                 followingCount = Integer.parseInt(followingObj.toString());
             }
 
-            // 从 Redis 读取粉丝数
-            Object fansObj = redisTemplate.opsForValue().get(COUNT_FANS_KEY + userId);
+            // 从 Redis Hash 读取粉丝数
+            Object fansObj = redisTemplate.opsForHash().get(statsKey, "followersCount");
             int followersCount = 0;
             if (fansObj != null) {
                 followersCount = Integer.parseInt(fansObj.toString());

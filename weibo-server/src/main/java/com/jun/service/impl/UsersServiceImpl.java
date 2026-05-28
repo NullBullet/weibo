@@ -603,12 +603,14 @@ public class UsersServiceImpl implements UsersService {
     }
 
     /**
-     * 从 Redis 实时获取关注数、粉丝数、获赞数，回填到 VO
+     * 从 Redis user:stats:{userId} Hash 实时获取关注数、粉丝数、获赞数，回填到 VO
      */
     private void fillUserStats(UsersInfoVO vo, Long userId) {
-        Object followingObj = redisTemplate.opsForValue().get(COUNT_FOLLOWING_KEY + userId);
-        Object fansObj = redisTemplate.opsForValue().get(COUNT_FANS_KEY + userId);
-        Object likesObj = redisTemplate.opsForValue().get(COUNT_USER_LIKES_KEY + userId);
+        String statsKey = USER_STATS_KEY + userId;
+
+        Object followingObj = redisTemplate.opsForHash().get(statsKey, "followingCount");
+        Object fansObj = redisTemplate.opsForHash().get(statsKey, "followersCount");
+        Object likesObj = redisTemplate.opsForHash().get(statsKey, "likesCount");
 
         int followingCount = followingObj == null ? 0 : Integer.parseInt(followingObj.toString());
         int followersCount = fansObj == null ? 0 : Integer.parseInt(fansObj.toString());
@@ -620,15 +622,15 @@ public class UsersServiceImpl implements UsersService {
             if (dbStats != null) {
                 if (followingObj == null) {
                     followingCount = dbStats.getFollowingCount() != null ? dbStats.getFollowingCount() : 0;
-                    redisTemplate.opsForValue().set(COUNT_FOLLOWING_KEY + userId, String.valueOf(followingCount), USER_PROFILE_TTL, TimeUnit.SECONDS);
+                    redisTemplate.opsForHash().put(statsKey, "followingCount", followingCount);
                 }
                 if (fansObj == null) {
                     followersCount = dbStats.getFollowersCount() != null ? dbStats.getFollowersCount() : 0;
-                    redisTemplate.opsForValue().set(COUNT_FANS_KEY + userId, String.valueOf(followersCount), USER_PROFILE_TTL, TimeUnit.SECONDS);
+                    redisTemplate.opsForHash().put(statsKey, "followersCount", followersCount);
                 }
                 if (likesObj == null) {
                     likesCount = dbStats.getLikesCount() != null ? dbStats.getLikesCount() : 0;
-                    redisTemplate.opsForValue().set(COUNT_USER_LIKES_KEY + userId, String.valueOf(likesCount), USER_PROFILE_TTL, TimeUnit.SECONDS);
+                    redisTemplate.opsForHash().put(statsKey, "likesCount", likesCount);
                 }
             }
         }

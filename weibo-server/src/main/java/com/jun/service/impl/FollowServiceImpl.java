@@ -37,8 +37,8 @@ public class FollowServiceImpl implements FollowService {
         // Redis: 更新关注/粉丝集合和计数
         redisTemplate.opsForSet().add(FOLLOW_FOLLOWING_KEY + currentUserId.toString(), targetUserId.toString());
         redisTemplate.opsForSet().add(FOLLOW_FANS_KEY + targetUserId, currentUserId.toString());
-        redisTemplate.opsForValue().increment(COUNT_FOLLOWING_KEY + currentUserId);
-        redisTemplate.opsForValue().increment(COUNT_FANS_KEY + targetUserId);
+        redisTemplate.opsForHash().increment(USER_STATS_KEY + currentUserId, "followingCount", 1);
+        redisTemplate.opsForHash().increment(USER_STATS_KEY + targetUserId, "followersCount", 1);
         return Result.success("关注成功");
     }
 
@@ -57,8 +57,8 @@ public class FollowServiceImpl implements FollowService {
         // Redis: 更新关注/粉丝集合和计数
         redisTemplate.opsForSet().remove(FOLLOW_FOLLOWING_KEY + currentUserId, targetUserId.toString());
         redisTemplate.opsForSet().remove(FOLLOW_FANS_KEY + targetUserId, currentUserId.toString());
-        redisTemplate.opsForValue().decrement(COUNT_FOLLOWING_KEY + currentUserId);
-        redisTemplate.opsForValue().decrement(COUNT_FANS_KEY + targetUserId);
+        redisTemplate.opsForHash().increment(USER_STATS_KEY + currentUserId, "followingCount", -1);
+        redisTemplate.opsForHash().increment(USER_STATS_KEY + targetUserId, "followersCount", -1);
         return Result.success("取关成功");
     }
 
