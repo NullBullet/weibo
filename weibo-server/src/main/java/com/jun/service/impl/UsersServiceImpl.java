@@ -54,14 +54,38 @@ public class UsersServiceImpl implements UsersService {
     @Override
     public Result<UsersInfoVO> me() {
         Long userId = BaseContext.getCurrentId();
-        User user = usersMapper.getUserInfoByUserId(userId);
-        UsersInfoVO usersInfoVO = new UsersInfoVO();
 
-        UserCountVO userCountVO = usersMapper.countByUserId(userId);
+        //1. 查缓存（不含 stats，stats 从 Redis 实时取）
+        String cacheKey = USER_PROFILE_KEY + userId;
+        Object cacheJson = redisTemplate.opsForValue().get(cacheKey);
+        if (cacheJson != null) {
+            try {
+                UsersInfoVO cached = JSONUtil.toBean(cacheJson.toString(), UsersInfoVO.class);
+                fillUserStats(cached, userId);
+                return Result.success(cached);
+            } catch (Exception e) {
+                log.warn("用户信息缓存反序列化失败 key={}", cacheKey, e);
+                redisTemplate.delete(cacheKey);
+            }
+        }
 
-        BeanUtils.copyProperties(user, usersInfoVO);
+        //2. 查数据库（只查用户基本信息，不含 stats）
+        UsersInfoVO usersInfoVO = usersMapper.getUserInfoWithoutStats(userId);
+        if (usersInfoVO == null) {
+            return Result.error("用户不存在");
+        }
 
-        usersInfoVO.setStats(userCountVO);
+        //3. 写缓存（只缓存基本信息，不含 stats）
+        redisTemplate.opsForValue().set(
+                cacheKey,
+                JSONUtil.toJsonStr(usersInfoVO),
+                USER_PROFILE_TTL + new Random().nextInt(600),
+                TimeUnit.SECONDS
+        );
+
+        //4. 从 Redis 实时获取 stats
+        fillUserStats(usersInfoVO, userId);
+
         return Result.success(usersInfoVO);
     }
 
@@ -590,13 +614,22 @@ public class UsersServiceImpl implements UsersService {
         int followersCount = fansObj == null ? 0 : Integer.parseInt(fansObj.toString());
         int likesCount = likesObj == null ? 0 : Integer.parseInt(likesObj.toString());
 
-        // Redis 没有时 fallback DB
+        // Redis 没有时 fallback DB，并回写 Redis
         if (followingObj == null || fansObj == null || likesObj == null) {
             UserCountVO dbStats = usersMapper.countByUserId(userId);
             if (dbStats != null) {
-                if (followingObj == null) followingCount = dbStats.getFollowingCount() != null ? dbStats.getFollowingCount() : 0;
-                if (fansObj == null) followersCount = dbStats.getFollowersCount() != null ? dbStats.getFollowersCount() : 0;
-                if (likesObj == null) likesCount = dbStats.getLikesCount() != null ? dbStats.getLikesCount() : 0;
+                if (followingObj == null) {
+                    followingCount = dbStats.getFollowingCount() != null ? dbStats.getFollowingCount() : 0;
+                    redisTemplate.opsForValue().set(COUNT_FOLLOWING_KEY + userId, String.valueOf(followingCount), USER_PROFILE_TTL, TimeUnit.SECONDS);
+                }
+                if (fansObj == null) {
+                    followersCount = dbStats.getFollowersCount() != null ? dbStats.getFollowersCount() : 0;
+                    redisTemplate.opsForValue().set(COUNT_FANS_KEY + userId, String.valueOf(followersCount), USER_PROFILE_TTL, TimeUnit.SECONDS);
+                }
+                if (likesObj == null) {
+                    likesCount = dbStats.getLikesCount() != null ? dbStats.getLikesCount() : 0;
+                    redisTemplate.opsForValue().set(COUNT_USER_LIKES_KEY + userId, String.valueOf(likesCount), USER_PROFILE_TTL, TimeUnit.SECONDS);
+                }
             }
         }
 
