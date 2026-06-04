@@ -44,4 +44,6 @@ public class RedisConstants {
     //用户信息缓存    user:profile:{userId}
     public static final String USER_PROFILE_KEY = "user:profile:";
     public static final Long USER_PROFILE_TTL = 3600L;
+
+    public static final String MQ_IDEMPOTENT_KEY = "mq:idempotent:";
 }

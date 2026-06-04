@@ -1,10 +1,12 @@
 package com.jun.service.impl;
 
+import com.jun.config.RabbitMQConfig;
 import com.jun.context.BaseContext;
 import com.jun.dto.RepostDTO;
 import com.jun.dto.ToggleLikeDTO;
 import com.jun.entity.Statuses;
 import com.jun.mapper.PostMapper;
+import com.jun.mq.message.LikeMessage;
 import com.jun.result.Result;
 import com.jun.service.ActivityService;
 import com.jun.service.PostService;
@@ -12,6 +14,8 @@ import com.jun.utils.HotScoreCalculator;
 import com.jun.vo.ToggleLikeVO;
 import jakarta.annotation.Resource;
 import lombok.NonNull;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,7 +24,10 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
+import static com.jun.config.RabbitMQConfig.POST_CANCEL;
+import static com.jun.config.RabbitMQConfig.POST_LIKE;
 import static com.jun.constant.RedisConstants.*;
 import static java.lang.Long.parseLong;
 
@@ -33,6 +40,8 @@ public class PostServiceImpl implements PostService {
     private RedisTemplate redisTemplate;
     @Resource
     private ActivityService activityService;
+    @Resource
+    private RabbitTemplate rabbitTemplate;
 
     //todo 未保证redis原子性，MQ异步落库
     @Transactional
@@ -50,8 +59,30 @@ public class PostServiceImpl implements PostService {
             Long add = redisTemplate.opsForSet().add(LIKE_POST_KEY + statusId, userId.toString());
             if (add == 1) {
                 Long likeCount = redisTemplate.opsForHash().increment(postStatsKey, "likeCount", 1);
-                postMapper.saveLikeInfo(toggleLikeDTO);
-                postMapper.updateStatusLikeCount(1, statusId);
+                //postMapper.saveLikeInfo(toggleLikeDTO);
+                //postMapper.updateStatusLikeCount(1, statusId);
+                LikeMessage message = LikeMessage.builder()
+                        .messageId(UUID.randomUUID().toString())
+                        .userId(userId)
+                        .statusId(statusId)
+                        .targetType(toggleLikeDTO.getTargetType())
+                        .retryCount(0)
+                        .isLiked(true)
+                        .build();
+
+                CorrelationData correlationData = new CorrelationData(message.getMessageId());
+
+                String routingKey = Boolean.TRUE.equals(toggleLikeDTO.getIsLiked())
+                        ? POST_LIKE
+                        : POST_CANCEL;
+
+                rabbitTemplate.convertAndSend(
+                        RabbitMQConfig.WEIBO_TOPIC_EXCHANGE,
+                        routingKey,
+                        message,
+                        correlationData
+                );
+
                 // 帖子作者的获赞数 +1（DB + Redis）
                 if (postOwnerId != null) {
                     postMapper.updateStatistics(1, postOwnerId);
@@ -76,8 +107,30 @@ public class PostServiceImpl implements PostService {
                     likeCount = 0L;
                     redisTemplate.opsForHash().put(postStatsKey, "likeCount", 0);
                 }
-                postMapper.deleteLikeInfo(toggleLikeDTO);
-                postMapper.updateStatusLikeCount(-1, statusId);
+                //postMapper.deleteLikeInfo(toggleLikeDTO);
+                //postMapper.updateStatusLikeCount(-1, statusId);
+                LikeMessage message = LikeMessage.builder()
+                        .messageId(UUID.randomUUID().toString())
+                        .userId(userId)
+                        .statusId(statusId)
+                        .targetType(toggleLikeDTO.getTargetType())
+                        .retryCount(0)
+                        .isLiked(false)
+                        .build();
+
+                CorrelationData correlationData = new CorrelationData(message.getMessageId());
+
+                String routingKey = Boolean.TRUE.equals(toggleLikeDTO.getIsLiked())
+                        ? POST_LIKE
+                        : POST_CANCEL;
+
+                rabbitTemplate.convertAndSend(
+                        RabbitMQConfig.WEIBO_TOPIC_EXCHANGE,
+                        routingKey,
+                        message,
+                        correlationData
+                );
+
                 // 帖子作者的获赞数 -1（DB + Redis）
                 if (postOwnerId != null) {
                     postMapper.updateStatistics(-1, postOwnerId);

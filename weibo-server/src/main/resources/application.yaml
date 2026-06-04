@@ -27,6 +27,18 @@ spring:
           max-wait: ${jun.lettuce.pool.max-wait}    # 最大阻塞等待时间(负数表示没限制)
           max-idle: ${jun.lettuce.pool.max-idle}     # 最大空闲
           min-idle: ${jun.lettuce.pool.min-idle}     # 最小空闲
+  rabbitmq:
+    host: ${jun.mq.host}
+    port: ${jun.mq.port}
+    username: ${jun.mq.username}
+    password: ${jun.mq.password}
+    publisher-confirm-type: correlated
+    listener:
+      simple:
+        acknowledge-mode: manual
+    publisher-returns: true
+    template:
+      mandatory: true
 
 mybatis:
   #mapper配置文件
