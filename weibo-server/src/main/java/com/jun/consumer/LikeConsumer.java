@@ -78,11 +78,12 @@ public class LikeConsumer {
 
                 log.error("达到最大重试次数，进入死信队列");
 
-                rabbitTemplate.convertAndSend(
-                        RabbitMQConfig.LIKE_DLQ,
-                        message
+                channel.basicNack(
+                        deliveryTag,
+                        false,
+                        false
                 );
-
+                return;
             } else {
 
                 message.setRetryCount(retryCount + 1);
