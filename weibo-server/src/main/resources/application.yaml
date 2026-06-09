@@ -33,9 +33,12 @@ spring:
     username: ${jun.mq.username}
     password: ${jun.mq.password}
     publisher-confirm-type: correlated
+
+    #消费者使用工厂模式时，应该显式指定确认模式
     listener:
       simple:
         acknowledge-mode: manual
+
     publisher-returns: true
     template:
       mandatory: true
