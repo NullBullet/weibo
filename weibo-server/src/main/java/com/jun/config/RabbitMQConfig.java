@@ -44,6 +44,18 @@ public class RabbitMQConfig {
     //评论行为
     public static final String COMMENT_CREATE = "comment.create";
 
+    // ======================== 转发队列 ========================
+
+    public static final String REPOST_QUEUE = "repost.queue";
+    public static final String REPOST_DLQ = "repost.dlq";
+    public static final String REPOST_DLX = "repost.dlx";
+    public static final String REPOST_DLQ_ROUTING_KEY = "repost.dlq";
+    public static final String REPOST_RETRY_QUEUE = "repost.retry.queue";
+    public static final Integer REPOST_MAX_RETRY_COUNT = 3;
+
+    //转发行为
+    public static final String POST_REPOST = "post.repost";
+
     @Bean
     public Queue likeQueue() {
         //durable（持久化），RabbitMQ 重启后队列不会消失
@@ -176,6 +188,54 @@ public class RabbitMQConfig {
                 .bind(commentQueue())
                 .to(weiboTopicExchange())
                 .with("comment.*");
+    }
+
+    // ======================== 转发队列 Bean ========================
+
+    /**
+     * 监听转发行为
+     */
+    @Bean
+    public Binding repostBinding() {
+        return BindingBuilder
+                .bind(repostQueue())
+                .to(weiboTopicExchange())
+                .with("post.repost");
+    }
+
+    @Bean
+    public Queue repostQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-dead-letter-exchange", REPOST_DLX);
+        args.put("x-dead-letter-routing-key", REPOST_DLQ_ROUTING_KEY);
+        return new Queue(REPOST_QUEUE, true, false, false, args);
+    }
+
+    @Bean
+    public DirectExchange repostDeadLetterExchange() {
+        return new DirectExchange(REPOST_DLX);
+    }
+
+    @Bean
+    public Queue repostDeadLetterQueue() {
+        return new Queue(REPOST_DLQ, true);
+    }
+
+    @Bean
+    public Binding repostDeadLetterBinding() {
+        return BindingBuilder
+                .bind(repostDeadLetterQueue())
+                .to(repostDeadLetterExchange())
+                .with(REPOST_DLQ_ROUTING_KEY);
+    }
+
+    @Bean
+    public Queue repostRetryQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-message-ttl", 5000);
+        args.put("x-dead-letter-exchange", "");
+        args.put("x-dead-letter-routing-key", REPOST_QUEUE);
+        return new Queue(REPOST_RETRY_QUEUE, true, false, false, args);
     }
 
     /**

@@ -4,9 +4,9 @@ import com.jun.config.RabbitMQConfig;
 import com.jun.context.BaseContext;
 import com.jun.dto.RepostDTO;
 import com.jun.dto.ToggleLikeDTO;
-import com.jun.entity.Statuses;
 import com.jun.mapper.PostMapper;
 import com.jun.mq.message.LikeMessage;
+import com.jun.mq.message.RepostMessage;
 import com.jun.result.Result;
 import com.jun.service.ActivityService;
 import com.jun.service.PostService;
@@ -20,14 +20,12 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
 import static com.jun.config.RabbitMQConfig.POST_CANCEL;
 import static com.jun.config.RabbitMQConfig.POST_LIKE;
+import static com.jun.config.RabbitMQConfig.POST_REPOST;
 import static com.jun.constant.RedisConstants.*;
 import static java.lang.Long.parseLong;
 
@@ -173,7 +171,6 @@ public class PostServiceImpl implements PostService {
         return Result.success(toggleLikeVO);
     }
 
-    //todo MQ异步落库
     @Transactional
     @Override
     public Result repost(RepostDTO repostDTO) {
@@ -186,35 +183,10 @@ public class PostServiceImpl implements PostService {
 
         originalStatusId = (originalStatus == null) ? forwardId : originalStatus;
 
-        LocalDateTime now = LocalDateTime.now();
-        //创建新的转发微博
-        Statuses forwardStatus = Statuses.builder()
-                .userId(currentId)
-                .content(repostDTO.getContent())
-                .statusType(1)
-                .originalStatusId(originalStatusId)
-                .createdAt(now)
-                .build();
-        //写入 MySQL
-        postMapper.saveForwardStatus(forwardStatus);
-        //写入用户 timeline ZSET
-        String key = USER_POST_IDS_KEY + currentId;
-        long createTimeStamp = now.toEpochSecond(ZoneOffset.UTC);
-        Long forwardStatusId = forwardStatus.getId();
-        redisTemplate.opsForZSet().add(key, forwardStatusId.toString(), createTimeStamp);
-        //原微博 repost_count +1
-        String forwardPostStatusKey = POST_STATS_KEY + forwardStatusId;
-
-        Map<String, Object> map = new HashMap<>();
-        map.put("likeCount", 0);
-        map.put("commentCount", 0);
-        map.put("viewCount", 0);
-        map.put("createTime", createTimeStamp);
-        redisTemplate.opsForHash().putAll(forwardPostStatusKey, map);
-
+        // Redis 同步：原微博 repost_count +1
         String postStatusKey = POST_STATS_KEY + originalStatusId;
-        postMapper.updateStatusRepostCount(1, originalStatusId);
         redisTemplate.opsForHash().increment(postStatusKey, "forwardCount", 1);
+
         //更新热度排行榜
         Map postStats = redisTemplate.opsForHash().entries(postStatusKey);
         Long likeCount1 = parseLong(postStats.get("likeCount").toString());
@@ -227,8 +199,26 @@ public class PostServiceImpl implements PostService {
         redisTemplate.opsForZSet().add(HOT_POST_ZSET_KEY, originalStatusId.toString(), score);
         redisTemplate.opsForSet().add(HOT_POST_CANDIDATE_KEY, originalStatusId.toString());
 
+        // MQ 异步入库：创建转发微博 + 更新原微博 reposts_count
+        RepostMessage message = RepostMessage.builder()
+                .messageId(UUID.randomUUID().toString())
+                .userId(currentId)
+                .originalStatusId(originalStatusId)
+                .content(repostDTO.getContent())
+                .retryCount(0)
+                .build();
+
+        CorrelationData correlationData = new CorrelationData(message.getMessageId());
+
+        rabbitTemplate.convertAndSend(
+                RabbitMQConfig.WEIBO_TOPIC_EXCHANGE,
+                POST_REPOST,
+                message,
+                correlationData
+        );
+
         //活动系统
-        activityService.handleForwardActivity(originalStatusId, currentId, forwardStatusId);
+        activityService.handleForwardActivity(originalStatusId, currentId, null);
 
         return Result.success();
     }

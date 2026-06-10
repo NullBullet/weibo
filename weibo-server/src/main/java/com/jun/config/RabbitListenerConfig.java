@@ -52,4 +52,19 @@ public class RabbitListenerConfig {
         factory.setPrefetchCount(1);
         return factory;
     }
+
+    @Bean("repostFactory")
+    public SimpleRabbitListenerContainerFactory repostFactory(ConnectionFactory connectionFactory, MessageConverter jsonMessageConverter) {
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory);
+
+        factory.setMessageConverter(jsonMessageConverter);
+        factory.setAcknowledgeMode(AcknowledgeMode.MANUAL);
+
+        // 转发写入频率更低，配置较少消费者
+        factory.setConcurrentConsumers(1);
+        factory.setMaxConcurrentConsumers(2);
+        factory.setPrefetchCount(1);
+        return factory;
+    }
 }
