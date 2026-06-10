@@ -57,6 +57,18 @@ public class RabbitMQConfig {
     public static final String COMMENT_LIKE = "comment.like.execute";
     public static final String COMMENT_LIKE_CANCEL = "comment.like.cancel";
 
+    // ======================== Feed推送队列 ========================
+
+    public static final String FEED_QUEUE = "feed.queue";
+    public static final String FEED_DLQ = "feed.dlq";
+    public static final String FEED_DLX = "feed.dlx";
+    public static final String FEED_DLQ_ROUTING_KEY = "feed.dlq";
+    public static final String FEED_RETRY_QUEUE = "feed.retry.queue";
+    public static final Integer FEED_MAX_RETRY_COUNT = 3;
+
+    //Feed推送行为
+    public static final String FEED_PUBLISH = "feed.publish";
+
     // ======================== 转发队列 ========================
 
     public static final String REPOST_QUEUE = "repost.queue";
@@ -249,6 +261,54 @@ public class RabbitMQConfig {
                 .bind(commentLikeQueue())
                 .to(weiboTopicExchange())
                 .with("comment.like.*");
+    }
+
+    // ======================== Feed推送队列 Bean ========================
+
+    @Bean
+    public Queue feedQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-dead-letter-exchange", FEED_DLX);
+        args.put("x-dead-letter-routing-key", FEED_DLQ_ROUTING_KEY);
+        return new Queue(FEED_QUEUE, true, false, false, args);
+    }
+
+    @Bean
+    public DirectExchange feedDeadLetterExchange() {
+        return new DirectExchange(FEED_DLX);
+    }
+
+    @Bean
+    public Queue feedDeadLetterQueue() {
+        return new Queue(FEED_DLQ, true);
+    }
+
+    @Bean
+    public Binding feedDeadLetterBinding() {
+        return BindingBuilder
+                .bind(feedDeadLetterQueue())
+                .to(feedDeadLetterExchange())
+                .with(FEED_DLQ_ROUTING_KEY);
+    }
+
+    @Bean
+    public Queue feedRetryQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-message-ttl", 5000);
+        args.put("x-dead-letter-exchange", "");
+        args.put("x-dead-letter-routing-key", FEED_QUEUE);
+        return new Queue(FEED_RETRY_QUEUE, true, false, false, args);
+    }
+
+    /**
+     * 监听Feed推送行为
+     */
+    @Bean
+    public Binding feedBinding() {
+        return BindingBuilder
+                .bind(feedQueue())
+                .to(weiboTopicExchange())
+                .with("feed.publish");
     }
 
     // ======================== 转发队列 Bean ========================

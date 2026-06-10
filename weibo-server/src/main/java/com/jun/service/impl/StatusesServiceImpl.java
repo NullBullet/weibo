@@ -1,15 +1,19 @@
 package com.jun.service.impl;
 
+import com.jun.config.RabbitMQConfig;
 import com.jun.context.BaseContext;
 import com.jun.dto.StatusesImageDTO;
 import com.jun.entity.Statuses;
 import com.jun.exception.StatusPublishException;
 import com.jun.mapper.StatusesMapper;
+import com.jun.mq.message.FeedMessage;
 import com.jun.result.Result;
 import com.jun.service.StatusesService;
 import com.jun.vo.SaveStatusVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,7 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
+import java.util.UUID;
 
 import static com.jun.constant.MessageConstant.STATUS_PUBLISH_FAIL;
 import static com.jun.constant.RedisConstants.*;
@@ -30,6 +34,8 @@ public class StatusesServiceImpl implements StatusesService {
     private StatusesMapper statusesMapper;
     @Resource
     private RedisTemplate redisTemplate;
+    @Resource
+    private RabbitTemplate rabbitTemplate;
 
     @Transactional
     @Override
@@ -66,15 +72,23 @@ public class StatusesServiceImpl implements StatusesService {
         String userPostIdsKey = USER_POST_IDS_KEY + userId;
         redisTemplate.opsForZSet().add(userPostIdsKey,statusId.toString(),createTime);
 
-        // 推送到粉丝收件箱
-        String fansKey = FOLLOW_FANS_KEY + userId;
-        Set<String> fans = redisTemplate.opsForSet().members(fansKey);
-        if (fans != null && !fans.isEmpty()) {
-            for (String fanId : fans) {
-                String feedKey = FEED_USER_KEY + fanId;
-                redisTemplate.opsForZSet().add(feedKey, statusId.toString(), createTime);
-            }
-        }
+        // MQ 异步推送粉丝收件箱
+        FeedMessage feedMessage = FeedMessage.builder()
+                .messageId(UUID.randomUUID().toString())
+                .userId(userId)
+                .statusId(statusId)
+                .createTime(createTime)
+                .retryCount(0)
+                .build();
+
+        CorrelationData correlationData = new CorrelationData(feedMessage.getMessageId());
+
+        rabbitTemplate.convertAndSend(
+                RabbitMQConfig.WEIBO_TOPIC_EXCHANGE,
+                RabbitMQConfig.FEED_PUBLISH,
+                feedMessage,
+                correlationData
+        );
 
         return Result.success(saveStatusVO);
     }

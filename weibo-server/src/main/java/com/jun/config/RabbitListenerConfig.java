@@ -68,6 +68,21 @@ public class RabbitListenerConfig {
         return factory;
     }
 
+    @Bean("feedFactory")
+    public SimpleRabbitListenerContainerFactory feedFactory(ConnectionFactory connectionFactory, MessageConverter jsonMessageConverter) {
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory);
+
+        factory.setMessageConverter(jsonMessageConverter);
+        factory.setAcknowledgeMode(AcknowledgeMode.MANUAL);
+
+        // Feed推送涉及大量粉丝 ZSET 写入，使用较多消费者
+        factory.setConcurrentConsumers(2);
+        factory.setMaxConcurrentConsumers(5);
+        factory.setPrefetchCount(1);
+        return factory;
+    }
+
     @Bean("repostFactory")
     public SimpleRabbitListenerContainerFactory repostFactory(ConnectionFactory connectionFactory, MessageConverter jsonMessageConverter) {
         SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
