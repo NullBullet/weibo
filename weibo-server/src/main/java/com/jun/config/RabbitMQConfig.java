@@ -69,6 +69,18 @@ public class RabbitMQConfig {
     //Feed推送行为
     public static final String FEED_PUBLISH = "feed.publish";
 
+    // ======================== 登录日志队列 ========================
+
+    public static final String LOGIN_LOG_QUEUE = "login.log.queue";
+    public static final String LOGIN_LOG_DLQ = "login.log.dlq";
+    public static final String LOGIN_LOG_DLX = "login.log.dlx";
+    public static final String LOGIN_LOG_DLQ_ROUTING_KEY = "login.log.dlq";
+    public static final String LOGIN_LOG_RETRY_QUEUE = "login.log.retry.queue";
+    public static final Integer LOGIN_LOG_MAX_RETRY_COUNT = 3;
+
+    //登录日志行为
+    public static final String LOGIN_LOG = "login.log";
+
     // ======================== 转发队列 ========================
 
     public static final String REPOST_QUEUE = "repost.queue";
@@ -309,6 +321,54 @@ public class RabbitMQConfig {
                 .bind(feedQueue())
                 .to(weiboTopicExchange())
                 .with("feed.publish");
+    }
+
+    // ======================== 登录日志队列 Bean ========================
+
+    @Bean
+    public Queue loginLogQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-dead-letter-exchange", LOGIN_LOG_DLX);
+        args.put("x-dead-letter-routing-key", LOGIN_LOG_DLQ_ROUTING_KEY);
+        return new Queue(LOGIN_LOG_QUEUE, true, false, false, args);
+    }
+
+    @Bean
+    public DirectExchange loginLogDeadLetterExchange() {
+        return new DirectExchange(LOGIN_LOG_DLX);
+    }
+
+    @Bean
+    public Queue loginLogDeadLetterQueue() {
+        return new Queue(LOGIN_LOG_DLQ, true);
+    }
+
+    @Bean
+    public Binding loginLogDeadLetterBinding() {
+        return BindingBuilder
+                .bind(loginLogDeadLetterQueue())
+                .to(loginLogDeadLetterExchange())
+                .with(LOGIN_LOG_DLQ_ROUTING_KEY);
+    }
+
+    @Bean
+    public Queue loginLogRetryQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-message-ttl", 5000);
+        args.put("x-dead-letter-exchange", "");
+        args.put("x-dead-letter-routing-key", LOGIN_LOG_QUEUE);
+        return new Queue(LOGIN_LOG_RETRY_QUEUE, true, false, false, args);
+    }
+
+    /**
+     * 监听登录日志行为
+     */
+    @Bean
+    public Binding loginLogBinding() {
+        return BindingBuilder
+                .bind(loginLogQueue())
+                .to(weiboTopicExchange())
+                .with("login.log");
     }
 
     // ======================== 转发队列 Bean ========================

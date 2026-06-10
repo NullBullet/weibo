@@ -83,6 +83,21 @@ public class RabbitListenerConfig {
         return factory;
     }
 
+    @Bean("loginLogFactory")
+    public SimpleRabbitListenerContainerFactory loginLogFactory(ConnectionFactory connectionFactory, MessageConverter jsonMessageConverter) {
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory);
+
+        factory.setMessageConverter(jsonMessageConverter);
+        factory.setAcknowledgeMode(AcknowledgeMode.MANUAL);
+
+        // 登录日志写入量不大，配置较少消费者
+        factory.setConcurrentConsumers(1);
+        factory.setMaxConcurrentConsumers(2);
+        factory.setPrefetchCount(1);
+        return factory;
+    }
+
     @Bean("repostFactory")
     public SimpleRabbitListenerContainerFactory repostFactory(ConnectionFactory connectionFactory, MessageConverter jsonMessageConverter) {
         SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
