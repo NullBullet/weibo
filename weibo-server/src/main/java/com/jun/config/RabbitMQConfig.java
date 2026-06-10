@@ -44,6 +44,19 @@ public class RabbitMQConfig {
     //评论行为
     public static final String COMMENT_CREATE = "comment.create";
 
+    // ======================== 评论点赞队列 ========================
+
+    public static final String COMMENT_LIKE_QUEUE = "comment.like.queue";
+    public static final String COMMENT_LIKE_DLQ = "comment.like.dlq";
+    public static final String COMMENT_LIKE_DLX = "comment.like.dlx";
+    public static final String COMMENT_LIKE_DLQ_ROUTING_KEY = "comment.like.dlq";
+    public static final String COMMENT_LIKE_RETRY_QUEUE = "comment.like.retry.queue";
+    public static final Integer COMMENT_LIKE_MAX_RETRY_COUNT = 3;
+
+    //评论点赞行为
+    public static final String COMMENT_LIKE = "comment.like.execute";
+    public static final String COMMENT_LIKE_CANCEL = "comment.like.cancel";
+
     // ======================== 转发队列 ========================
 
     public static final String REPOST_QUEUE = "repost.queue";
@@ -188,6 +201,54 @@ public class RabbitMQConfig {
                 .bind(commentQueue())
                 .to(weiboTopicExchange())
                 .with("comment.*");
+    }
+
+    // ======================== 评论点赞队列 Bean ========================
+
+    @Bean
+    public Queue commentLikeQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-dead-letter-exchange", COMMENT_LIKE_DLX);
+        args.put("x-dead-letter-routing-key", COMMENT_LIKE_DLQ_ROUTING_KEY);
+        return new Queue(COMMENT_LIKE_QUEUE, true, false, false, args);
+    }
+
+    @Bean
+    public DirectExchange commentLikeDeadLetterExchange() {
+        return new DirectExchange(COMMENT_LIKE_DLX);
+    }
+
+    @Bean
+    public Queue commentLikeDeadLetterQueue() {
+        return new Queue(COMMENT_LIKE_DLQ, true);
+    }
+
+    @Bean
+    public Binding commentLikeDeadLetterBinding() {
+        return BindingBuilder
+                .bind(commentLikeDeadLetterQueue())
+                .to(commentLikeDeadLetterExchange())
+                .with(COMMENT_LIKE_DLQ_ROUTING_KEY);
+    }
+
+    @Bean
+    public Queue commentLikeRetryQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-message-ttl", 5000);
+        args.put("x-dead-letter-exchange", "");
+        args.put("x-dead-letter-routing-key", COMMENT_LIKE_QUEUE);
+        return new Queue(COMMENT_LIKE_RETRY_QUEUE, true, false, false, args);
+    }
+
+    /**
+     * 监听评论点赞行为（3级routing key，避免与 comment.* 冲突）
+     */
+    @Bean
+    public Binding commentLikeBinding() {
+        return BindingBuilder
+                .bind(commentLikeQueue())
+                .to(weiboTopicExchange())
+                .with("comment.like.*");
     }
 
     // ======================== 转发队列 Bean ========================

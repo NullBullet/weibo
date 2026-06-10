@@ -10,6 +10,7 @@ import com.jun.dto.ToggleLikeDTO;
 import com.jun.entity.Comment;
 import com.jun.mapper.CommentsMapper;
 import com.jun.mapper.PostMapper;
+import com.jun.mq.message.CommentLikeMessage;
 import com.jun.mq.message.CommentMessage;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
@@ -37,6 +38,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.jun.config.RabbitMQConfig.COMMENT_CREATE;
+import static com.jun.config.RabbitMQConfig.COMMENT_LIKE;
+import static com.jun.config.RabbitMQConfig.COMMENT_LIKE_CANCEL;
 import static com.jun.constant.RedisConstants.*;
 
 @Slf4j
@@ -73,8 +76,23 @@ public class CommentsServiceImpl implements CommentsService {
             Long add = redisTemplate.opsForSet().add(likeKey, userId.toString());
             if (add == 1) {
                 Long likeCount = redisTemplate.opsForHash().increment(statsKey, "likeCount", 1);
-                postMapper.saveLikeInfo(toggleLikeDTO);
-                postMapper.updateCommentLikeCount(1, commentId);
+
+                // MQ 异步入库：保存点赞记录 + 更新评论点赞数
+                CommentLikeMessage message = CommentLikeMessage.builder()
+                        .messageId(UUID.randomUUID().toString())
+                        .userId(userId)
+                        .commentId(commentId)
+                        .isLiked(true)
+                        .retryCount(0)
+                        .build();
+                CorrelationData correlationData = new CorrelationData(message.getMessageId());
+                rabbitTemplate.convertAndSend(
+                        RabbitMQConfig.WEIBO_TOPIC_EXCHANGE,
+                        COMMENT_LIKE,
+                        message,
+                        correlationData
+                );
+
                 // 评论作者的获赞数 +1（DB + Redis）
                 if (commentOwnerId != null) {
                     postMapper.updateStatistics(1, commentOwnerId);
@@ -97,8 +115,23 @@ public class CommentsServiceImpl implements CommentsService {
                     likeCount = 0L;
                     redisTemplate.opsForHash().put(statsKey, "likeCount", 0);
                 }
-                postMapper.deleteLikeInfo(toggleLikeDTO);
-                postMapper.updateCommentLikeCount(-1, commentId);
+
+                // MQ 异步入库：删除点赞记录 + 更新评论点赞数
+                CommentLikeMessage message = CommentLikeMessage.builder()
+                        .messageId(UUID.randomUUID().toString())
+                        .userId(userId)
+                        .commentId(commentId)
+                        .isLiked(false)
+                        .retryCount(0)
+                        .build();
+                CorrelationData correlationData = new CorrelationData(message.getMessageId());
+                rabbitTemplate.convertAndSend(
+                        RabbitMQConfig.WEIBO_TOPIC_EXCHANGE,
+                        COMMENT_LIKE_CANCEL,
+                        message,
+                        correlationData
+                );
+
                 // 评论作者的获赞数 -1（DB + Redis）
                 if (commentOwnerId != null) {
                     postMapper.updateStatistics(-1, commentOwnerId);
