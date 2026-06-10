@@ -22,4 +22,16 @@ public class HomeQueryDTO implements Serializable {
 
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate endDate;
+
+    // ======================== 收件箱游标分页 ========================
+
+    /**
+     * 上一页最后一条的 score（收件箱 ZSET 分页）
+     */
+    private Double lastScore;
+
+    /**
+     * 与 lastScore 相同 score 的偏移量
+     */
+    private Integer offset;
 }

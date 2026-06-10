@@ -17,10 +17,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 import static com.jun.constant.MessageConstant.STATUS_PUBLISH_FAIL;
-import static com.jun.constant.RedisConstants.POST_STATS_KEY;
-import static com.jun.constant.RedisConstants.USER_POST_IDS_KEY;
+import static com.jun.constant.RedisConstants.*;
 
 @Slf4j
 @Service
@@ -65,7 +65,17 @@ public class StatusesServiceImpl implements StatusesService {
 
         String userPostIdsKey = USER_POST_IDS_KEY + userId;
         redisTemplate.opsForZSet().add(userPostIdsKey,statusId.toString(),createTime);
-        
+
+        // 推送到粉丝收件箱
+        String fansKey = FOLLOW_FANS_KEY + userId;
+        Set<String> fans = redisTemplate.opsForSet().members(fansKey);
+        if (fans != null && !fans.isEmpty()) {
+            for (String fanId : fans) {
+                String feedKey = FEED_USER_KEY + fanId;
+                redisTemplate.opsForZSet().add(feedKey, statusId.toString(), createTime);
+            }
+        }
+
         return Result.success(saveStatusVO);
     }
 }

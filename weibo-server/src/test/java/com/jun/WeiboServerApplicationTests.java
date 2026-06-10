@@ -210,5 +210,53 @@ public class WeiboServerApplicationTests {
 
         System.out.println(">>> 同步完成！共更新 " + updated + " 条记录。");
     }
+
+    /**
+     * 初始化粉丝收件箱：将所有历史帖子写入粉丝的 feed:user ZSET
+     */
+    //@Test
+    void initFanInboxes() {
+        System.out.println(">>> 开始初始化粉丝收件箱...");
+
+        // 1. 获取所有发过帖子的用户
+        Set<Long> userIds = testMapper.getUserId();
+        if (userIds == null || userIds.isEmpty()) {
+            System.out.println("没有用户数据，跳过。");
+            return;
+        }
+
+        int totalFanPushes = 0;
+
+        for (Long userId : userIds) {
+            // 2. 该用户的帖子列表
+            List<Statuses> posts = testMapper.getStatusByUserId(userId);
+            if (posts == null || posts.isEmpty()) continue;
+
+            // 3. 该用户的粉丝列表（Redis）
+            Set<String> fans = redisTemplate.opsForSet().members(FOLLOW_FANS_KEY + userId);
+            if (fans == null || fans.isEmpty()) continue;
+
+            // 4. pipeline 批量推送到粉丝收件箱
+            redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+                for (String fanId : fans) {
+                    byte[] feedKey = (FEED_USER_KEY + fanId).getBytes();
+                    for (Statuses post : posts) {
+                        double score = post.getCreatedAt().toEpochSecond(ZoneOffset.UTC);
+                        connection.zAdd(
+                                feedKey,
+                                score,
+                                post.getId().toString().getBytes()
+                        );
+                    }
+                }
+                return null;
+            });
+
+            totalFanPushes += fans.size();
+            System.out.println("用户 " + userId + " 的 " + posts.size() + " 条帖子 → " + fans.size() + " 个粉丝收件箱");
+        }
+
+        System.out.println(">>> 粉丝收件箱初始化完成！共影响 " + totalFanPushes + " 个粉丝收件箱");
+    }
 }
 

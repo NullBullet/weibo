@@ -46,4 +46,7 @@ public class RedisConstants {
     public static final Long USER_PROFILE_TTL = 3600L;
 
     public static final String MQ_IDEMPOTENT_KEY = "mq:idempotent:";
+
+    //用户收件箱    feed:user:{userId} -> ZSET (postId, createTime)
+    public static final String FEED_USER_KEY = "feed:user:";
 }
