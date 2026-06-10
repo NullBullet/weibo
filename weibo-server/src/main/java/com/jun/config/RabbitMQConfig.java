@@ -32,6 +32,18 @@ public class RabbitMQConfig {
     //取消点赞
     public static final String POST_CANCEL = "post.cancel";
 
+    // ======================== 评论队列 ========================
+
+    public static final String COMMENT_QUEUE = "comment.queue";
+    public static final String COMMENT_DLQ = "comment.dlq";
+    public static final String COMMENT_DLX = "comment.dlx";
+    public static final String COMMENT_DLQ_ROUTING_KEY = "comment.dlq";
+    public static final String COMMENT_RETRY_QUEUE = "comment.retry.queue";
+    public static final Integer COMMENT_MAX_RETRY_COUNT = 3;
+
+    //评论行为
+    public static final String COMMENT_CREATE = "comment.create";
+
     @Bean
     public Queue likeQueue() {
         //durable（持久化），RabbitMQ 重启后队列不会消失
@@ -117,6 +129,55 @@ public class RabbitMQConfig {
                 .to(weiboTopicExchange())
                 .with("post.*");
     }
+
+    // ======================== 评论队列 Bean ========================
+
+    @Bean
+    public Queue commentQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-dead-letter-exchange", COMMENT_DLX);
+        args.put("x-dead-letter-routing-key", COMMENT_DLQ_ROUTING_KEY);
+        return new Queue(COMMENT_QUEUE, true, false, false, args);
+    }
+
+    @Bean
+    public DirectExchange commentDeadLetterExchange() {
+        return new DirectExchange(COMMENT_DLX);
+    }
+
+    @Bean
+    public Queue commentDeadLetterQueue() {
+        return new Queue(COMMENT_DLQ, true);
+    }
+
+    @Bean
+    public Binding commentDeadLetterBinding() {
+        return BindingBuilder
+                .bind(commentDeadLetterQueue())
+                .to(commentDeadLetterExchange())
+                .with(COMMENT_DLQ_ROUTING_KEY);
+    }
+
+    @Bean
+    public Queue commentRetryQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-message-ttl", 5000);
+        args.put("x-dead-letter-exchange", "");
+        args.put("x-dead-letter-routing-key", COMMENT_QUEUE);
+        return new Queue(COMMENT_RETRY_QUEUE, true, false, false, args);
+    }
+
+    /**
+     * 监听评论行为
+     */
+    @Bean
+    public Binding commentBinding() {
+        return BindingBuilder
+                .bind(commentQueue())
+                .to(weiboTopicExchange())
+                .with("comment.*");
+    }
+
     /**
      * JSON 序列化，MQ 能直接传 Java 对象
      */

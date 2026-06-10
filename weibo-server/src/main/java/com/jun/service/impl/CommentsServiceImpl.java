@@ -1,6 +1,7 @@
 package com.jun.service.impl;
 
 import cn.hutool.json.JSONUtil;
+import com.jun.config.RabbitMQConfig;
 import com.jun.context.BaseContext;
 import com.jun.dto.CommentsResultDTO;
 import com.jun.dto.PostCommentsDTO;
@@ -9,6 +10,7 @@ import com.jun.dto.ToggleLikeDTO;
 import com.jun.entity.Comment;
 import com.jun.mapper.CommentsMapper;
 import com.jun.mapper.PostMapper;
+import com.jun.mq.message.CommentMessage;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.service.CommentsService;
@@ -19,6 +21,8 @@ import com.jun.vo.ToggleLikeVO;
 import com.jun.vo.UserVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.data.redis.connection.RedisStringCommands;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -32,6 +36,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import static com.jun.config.RabbitMQConfig.COMMENT_CREATE;
 import static com.jun.constant.RedisConstants.*;
 
 @Slf4j
@@ -44,6 +49,8 @@ public class CommentsServiceImpl implements CommentsService {
     private PostMapper postMapper;
     @Resource
     private RedisTemplate redisTemplate;
+    @Resource
+    private RabbitTemplate rabbitTemplate;
 
     // ======================== 评论点赞 ========================
 
@@ -206,10 +213,7 @@ public class CommentsServiceImpl implements CommentsService {
                 .content(content)
                 .createdAt(LocalDateTime.now()).build();
 
-        commentsMapper.saveComment(comment);
-
-        commentsMapper.updateStatusCommentCount(statusId);
-
+        // Redis 操作同步执行，DB 写入通过 MQ 异步
         String statsKey = POST_STATS_KEY + statusId;
         redisTemplate.opsForHash().increment(statsKey, "commentCount", 1);
 
@@ -217,6 +221,7 @@ public class CommentsServiceImpl implements CommentsService {
             redisTemplate.opsForHash().increment(COMMENT_STATS_KEY + parentId, "replyCount", 1);
         }
 
+        // 更新热度
         Map<Object, Object> stats = redisTemplate.opsForHash().entries(statsKey);
         if (stats != null && !stats.isEmpty()) {
             long likeCount = parseStat(stats, "likeCount");
@@ -233,10 +238,31 @@ public class CommentsServiceImpl implements CommentsService {
             redisTemplate.opsForSet().add(HOT_POST_CANDIDATE_KEY, statusId.toString());
         }
 
+        // 删除缓存
         deleteCommentListCache(statusId);
         if (parentId != null) {
             deleteReplyListCache(parentId);
         }
+
+        // MQ 异步入库
+        CommentMessage message = CommentMessage.builder()
+                .messageId(UUID.randomUUID().toString())
+                .userId(userId)
+                .statusId(statusId)
+                .parentId(parentId)
+                .replyUserId(replyUserId)
+                .content(content)
+                .retryCount(0)
+                .build();
+
+        CorrelationData correlationData = new CorrelationData(message.getMessageId());
+
+        rabbitTemplate.convertAndSend(
+                RabbitMQConfig.WEIBO_TOPIC_EXCHANGE,
+                COMMENT_CREATE,
+                message,
+                correlationData
+        );
 
         CommentVO vo = buildCommentVO(comment, userId);
         return Result.success(vo);
