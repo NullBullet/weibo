@@ -52,6 +52,11 @@ public class LoginLogMessage {
     private String failReason;
 
     /**
+     * 操作时间戳（毫秒，Redis ZSET score 与 DB created_at 共用，保证一致）
+     */
+    private Long activeTimestamp;
+
+    /**
      * 重试次数
      */
     private Integer retryCount;

@@ -49,4 +49,7 @@ public class RedisConstants {
 
     //用户收件箱    feed:user:{userId} -> ZSET (postId, createTime)
     public static final String FEED_USER_KEY = "feed:user:";
+
+    //活跃用户    active_users -> ZSET (userId, loginTimestampMs)
+    public static final String ACTIVE_USERS_KEY = "active:users";
 }

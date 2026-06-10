@@ -90,6 +90,8 @@ public class AuthServiceImpl implements AuthService {
      */
     private void sendLoginLog(Long userId, String username, String ipAddress,
                               String userAgent, Integer loginStatus, String failReason) {
+        long now = System.currentTimeMillis();
+
         LoginLogMessage message = LoginLogMessage.builder()
                 .messageId(UUID.randomUUID().toString())
                 .userId(userId)
@@ -99,6 +101,7 @@ public class AuthServiceImpl implements AuthService {
                 .userAgent(userAgent)
                 .loginStatus(loginStatus)
                 .failReason(failReason)
+                .activeTimestamp(now)
                 .retryCount(0)
                 .build();
 

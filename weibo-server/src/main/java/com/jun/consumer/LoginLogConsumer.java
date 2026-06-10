@@ -14,9 +14,13 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.concurrent.TimeUnit;
 
 import static com.jun.config.RabbitMQConfig.LOGIN_LOG_MAX_RETRY_COUNT;
+import static com.jun.constant.RedisConstants.ACTIVE_USERS_KEY;
 import static com.jun.constant.RedisConstants.MQ_IDEMPOTENT_KEY;
 
 @Component
@@ -47,6 +51,7 @@ public class LoginLogConsumer {
         }
 
         try {
+            // DB：写入登录日志（使用 Service 层传入的时间戳，与 Redis 保持一致）
             LoginLog loginLog = new LoginLog();
             loginLog.setUserId(message.getUserId());
             loginLog.setLoginType(message.getLoginType());
@@ -54,8 +59,21 @@ public class LoginLogConsumer {
             loginLog.setUserAgent(message.getUserAgent());
             loginLog.setLoginStatus(message.getLoginStatus());
             loginLog.setFailReason(message.getFailReason());
+            loginLog.setCreatedAt(LocalDateTime.ofInstant(
+                    Instant.ofEpochMilli(message.getActiveTimestamp()),
+                    ZoneOffset.UTC
+            ));
 
             loginLogMapper.insert(loginLog);
+
+            // Redis：登录成功时写入活跃用户 ZSET
+            if (message.getLoginStatus() == 1) {
+                redisTemplate.opsForZSet().add(
+                        ACTIVE_USERS_KEY,
+                        message.getUserId().toString(),
+                        (double) message.getActiveTimestamp()
+                );
+            }
 
             // 幂等标记（7天）
             redisTemplate.opsForValue().set(key, "1", 7, TimeUnit.DAYS);
