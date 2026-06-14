@@ -4,9 +4,12 @@ import com.jun.WeiboServerApplicationTests;
 import com.jun.entity.Statuses;
 import com.jun.entity.User;
 import com.jun.entity.UserStatistics;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -30,4 +33,28 @@ public interface TestMapper {
     int updateUserFollowCounts(@org.apache.ibatis.annotations.Param("userId") Long userId,
                                 @org.apache.ibatis.annotations.Param("followingCount") int followingCount,
                                 @org.apache.ibatis.annotations.Param("followersCount") int followersCount);
+
+    // ======================== 通知表初始化 ========================
+
+    @Select("select target_type as targetType, target_id as targetId, " +
+            "count(*) as likeCount, max(created_at) as lastLikeTime " +
+            "from attitudes group by target_type, target_id")
+    List<AttitudeAggregate> getAttitudeAggregates();
+
+    @Select("select user_id from statuses where id = #{statusId} and is_deleted = 0")
+    Long getPostOwnerId(@Param("statusId") Long statusId);
+
+    @Select("select user_id from comments where id = #{commentId} and is_deleted = 0")
+    Long getCommentOwnerId(@Param("commentId") Long commentId);
+
+    @Insert("insert into notification_like(receiver_id, target_type, target_id, like_count, last_like_time) " +
+            "values(#{receiverId}, #{targetType}, #{targetId}, #{likeCount}, #{lastLikeTime}) " +
+            "on duplicate key update " +
+            "like_count = values(like_count), " +
+            "last_like_time = values(last_like_time)")
+    void upsertNotificationLike(@Param("receiverId") Long receiverId,
+                                @Param("targetType") Integer targetType,
+                                @Param("targetId") Long targetId,
+                                @Param("likeCount") Integer likeCount,
+                                @Param("lastLikeTime") LocalDateTime lastLikeTime);
 }

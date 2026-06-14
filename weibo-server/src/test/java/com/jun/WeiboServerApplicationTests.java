@@ -3,6 +3,7 @@ package com.jun;
 import com.jun.entity.Statuses;
 import com.jun.entity.User;
 import com.jun.entity.UserStatistics;
+import com.jun.mapper.AttitudeAggregate;
 import com.jun.mapper.TestMapper;
 import com.jun.utils.HotScoreCalculator;
 import com.jun.vo.StatusVO;
@@ -257,6 +258,55 @@ public class WeiboServerApplicationTests {
         }
 
         System.out.println(">>> 粉丝收件箱初始化完成！共影响 " + totalFanPushes + " 个粉丝收件箱");
+    }
+
+    /**
+     * 根据点赞表初始化通知 like 表：
+     * 将 attitudes 按 (target_type, target_id) 聚合后写入 notification_like，接收者为微博/评论的作者。
+     */
+    @Test
+    void initNotificationLike() {
+        System.out.println(">>> 开始初始化 notification_like 表...");
+
+        // 1. 聚合 attitudes 数据
+        List<AttitudeAggregate> aggregates = testMapper.getAttitudeAggregates();
+        if (aggregates == null || aggregates.isEmpty()) {
+            System.out.println("点赞表无数据，跳过。");
+            return;
+        }
+
+        int inserted = 0;
+        for (AttitudeAggregate agg : aggregates) {
+            if (agg.getTargetType() == null || agg.getTargetId() == null) {
+                continue;
+            }
+
+            // 2. 获取目标作者（即通知接收者）
+            Long receiverId;
+            if (agg.getTargetType() == 1) {
+                receiverId = testMapper.getPostOwnerId(agg.getTargetId());
+            } else if (agg.getTargetType() == 2) {
+                receiverId = testMapper.getCommentOwnerId(agg.getTargetId());
+            } else {
+                continue;
+            }
+
+            if (receiverId == null) {
+                continue;
+            }
+
+            // 3. Upsert 通知表
+            testMapper.upsertNotificationLike(receiverId, agg.getTargetType(), agg.getTargetId(),
+                    agg.getLikeCount(), agg.getLastLikeTime());
+            inserted++;
+
+            System.out.println("通知 " + inserted + ": receiver=" + receiverId
+                    + ", type=" + (agg.getTargetType() == 1 ? "帖子" : "评论")
+                    + ", target=" + agg.getTargetId()
+                    + ", likes=" + agg.getLikeCount());
+        }
+
+        System.out.println(">>> notification_like 初始化完成！共写入 " + inserted + " 条记录");
     }
 }
 

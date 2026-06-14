@@ -11,7 +11,7 @@ import java.util.List;
 
 @Mapper
 public interface PostMapper {
-    @Insert("insert into attitudes(user_id, target_type, target_id) values (#{userId},#{targetTypeValue},#{targetId})")
+    @Insert("insert into attitudes(user_id, target_type, target_id, created_at) values (#{userId},#{targetTypeValue},#{targetId}, NOW())")
     void saveLikeInfo(ToggleLikeDTO toggleLikeDTO);
 
     @Update("update statuses set attitudes_count = attitudes_count + #{likeCount} where id = #{statusId}")
