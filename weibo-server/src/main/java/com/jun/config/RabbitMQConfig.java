@@ -32,6 +32,15 @@ public class RabbitMQConfig {
     //取消点赞
     public static final String POST_CANCEL = "post.cancel";
 
+    // ======================== 通知队列 ========================
+
+    public static final String NOTICE_QUEUE = "notice.queue";
+    public static final String NOTICE_DLQ = "notice.dlq";
+    public static final String NOTICE_DLX = "notice.dlx";
+    public static final String NOTICE_DLQ_ROUTING_KEY = "notice.dlq";
+    public static final String NOTICE_RETRY_QUEUE = "notice.retry.queue";
+    public static final Integer NOTICE_MAX_RETRY_COUNT = 3;
+
     // ======================== 评论队列 ========================
 
     public static final String COMMENT_QUEUE = "comment.queue";
@@ -177,6 +186,62 @@ public class RabbitMQConfig {
                 .bind(likeQueue())
                 .to(weiboTopicExchange())
                 .with("post.*");
+    }
+
+    // ======================== 通知队列 Bean ========================
+
+    @Bean
+    public Queue noticeQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-dead-letter-exchange", NOTICE_DLX);
+        args.put("x-dead-letter-routing-key", NOTICE_DLQ_ROUTING_KEY);
+        return new Queue(NOTICE_QUEUE, true, false, false, args);
+    }
+
+    @Bean
+    public DirectExchange noticeDeadLetterExchange() {
+        return new DirectExchange(NOTICE_DLX);
+    }
+
+    @Bean
+    public Queue noticeDeadLetterQueue() {
+        return new Queue(NOTICE_DLQ, true);
+    }
+
+    @Bean
+    public Binding noticeDeadLetterBinding() {
+        return BindingBuilder
+                .bind(noticeDeadLetterQueue())
+                .to(noticeDeadLetterExchange())
+                .with(NOTICE_DLQ_ROUTING_KEY);
+    }
+
+    @Bean
+    public Queue noticeRetryQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-message-ttl", 5000);
+        args.put("x-dead-letter-exchange", "");
+        args.put("x-dead-letter-routing-key", NOTICE_QUEUE);
+        return new Queue(NOTICE_RETRY_QUEUE, true, false, false, args);
+    }
+
+    /**
+     * 监听帖子点赞/取消 → 通知（与 like.queue 形成多消费者）
+     */
+    @Bean
+    public Binding noticeLikeBinding() {
+        return BindingBuilder
+                .bind(noticeQueue())
+                .to(weiboTopicExchange())
+                .with("post.like");
+    }
+
+    @Bean
+    public Binding noticeCancelBinding() {
+        return BindingBuilder
+                .bind(noticeQueue())
+                .to(weiboTopicExchange())
+                .with("post.cancel");
     }
 
     // ======================== 评论队列 Bean ========================

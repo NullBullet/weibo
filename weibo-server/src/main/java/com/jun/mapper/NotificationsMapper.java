@@ -31,4 +31,19 @@ public interface NotificationsMapper {
                       @Param("targetId") Integer targetId);
 
     Integer getTargetTypeByTargetId(@Param("targetId") Integer targetId);
+
+    Long getOwnerByTargetId(@Param("targetType") Integer targetType,
+                            @Param("targetId") Long targetId);
+
+    void upsertLikeNotification(@Param("receiverId") Long receiverId,
+                                @Param("targetType") Integer targetType,
+                                @Param("targetId") Long targetId);
+
+    void decrementLikeNotification(@Param("receiverId") Long receiverId,
+                                    @Param("targetType") Integer targetType,
+                                    @Param("targetId") Long targetId);
+
+    void deleteZeroCount(@Param("receiverId") Long receiverId,
+                         @Param("targetType") Integer targetType,
+                         @Param("targetId") Long targetId);
 }

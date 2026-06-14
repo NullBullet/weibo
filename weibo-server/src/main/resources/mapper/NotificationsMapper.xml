@@ -59,4 +59,37 @@
         limit 1
     </select>
 
+    <select id="getOwnerByTargetId" resultType="long">
+        select case when #{targetType} = 1
+            then (select user_id from statuses where id = #{targetId})
+            else (select user_id from comments where id = #{targetId})
+        end
+    </select>
+
+    <insert id="upsertLikeNotification">
+        insert into notification_like(receiver_id, target_type, target_id, like_count, last_like_time, is_read, create_time)
+        values(#{receiverId}, #{targetType}, #{targetId}, 1, NOW(), 0, NOW())
+        on duplicate key update
+            like_count = like_count + 1,
+            last_like_time = NOW(),
+            is_read = 0
+    </insert>
+
+    <update id="decrementLikeNotification">
+        update notification_like
+        set like_count = like_count - 1,
+            last_like_time = NOW()
+        where receiver_id = #{receiverId}
+          and target_type = #{targetType}
+          and target_id = #{targetId}
+    </update>
+
+    <delete id="deleteZeroCount">
+        delete from notification_like
+        where receiver_id = #{receiverId}
+          and target_type = #{targetType}
+          and target_id = #{targetId}
+          and like_count &lt;= 0
+    </delete>
+
 </mapper>
