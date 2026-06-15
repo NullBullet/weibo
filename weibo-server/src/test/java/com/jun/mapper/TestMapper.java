@@ -37,9 +37,12 @@ public interface TestMapper {
 
     // ======================== 通知表初始化 ========================
 
-    @Select("select target_type as targetType, target_id as targetId, " +
-            "count(*) as likeCount, max(created_at) as lastLikeTime " +
-            "from attitudes group by target_type, target_id")
+    @Select("select a.target_type as targetType, a.target_id as targetId, " +
+            "count(*) as likeCount, max(a.created_at) as lastLikeTime " +
+            "from attitudes a " +
+            "where (a.target_type = 1 and a.user_id != (select s.user_id from statuses s where s.id = a.target_id and s.is_deleted = 0)) " +
+            "   or (a.target_type = 2 and a.user_id != (select c.user_id from comments c where c.id = a.target_id and c.is_deleted = 0)) " +
+            "group by a.target_type, a.target_id")
     List<AttitudeAggregate> getAttitudeAggregates();
 
     @Select("select user_id from statuses where id = #{statusId} and is_deleted = 0")

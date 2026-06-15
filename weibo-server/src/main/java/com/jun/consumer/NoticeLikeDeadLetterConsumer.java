@@ -12,7 +12,7 @@ import java.io.IOException;
 
 @Component
 @Slf4j
-public class NoticeDeadLetterConsumer {
+public class NoticeLikeDeadLetterConsumer {
 
     @RabbitListener(queues = RabbitMQConfig.NOTICE_DLQ)
     public void handleDeadLetter(LikeMessage message, Channel channel, Message msg) throws IOException {
