@@ -108,4 +108,9 @@
         <foreach collection="senderIds" item="id" open="(" close=")" separator=",">#{id}</foreach>
     </select>
 
+    <insert id="insertCommentNotification">
+        insert into notification_comment(receiver_id, sender_id, target_type, target_id, comment_id, is_read, create_time)
+        values(#{receiverId}, #{senderId}, #{targetType}, #{targetId}, #{commentId}, 0, NOW())
+    </insert>
+
 </mapper>

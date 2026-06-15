@@ -37,6 +37,11 @@ public class CommentMessage {
     private Long replyUserId;
 
     /**
+     * 评论ID（CommentConsumer 落库后回填，用于通知）
+     */
+    private Long commentId;
+
+    /**
      * 评论内容
      */
     private String content;

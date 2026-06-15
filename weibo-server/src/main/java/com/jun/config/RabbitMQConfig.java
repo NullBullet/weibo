@@ -41,6 +41,18 @@ public class RabbitMQConfig {
     public static final String NOTICE_RETRY_QUEUE = "notice.retry.queue";
     public static final Integer NOTICE_MAX_RETRY_COUNT = 3;
 
+    // ======================== 评论通知队列 ========================
+
+    public static final String NOTICE_COMMENT_QUEUE = "notice.comment.queue";
+    public static final String NOTICE_COMMENT_DLQ = "notice.comment.dlq";
+    public static final String NOTICE_COMMENT_DLX = "notice.comment.dlx";
+    public static final String NOTICE_COMMENT_DLQ_ROUTING_KEY = "notice.comment.dlq";
+    public static final String NOTICE_COMMENT_RETRY_QUEUE = "notice.comment.retry.queue";
+    public static final Integer NOTICE_COMMENT_MAX_RETRY_COUNT = 3;
+
+    //评论通知行为（与 comment.create 绑定，一消息多消费者）
+    public static final String COMMENT_NOTICE = "comment.create";
+
     // ======================== 评论队列 ========================
 
     public static final String COMMENT_QUEUE = "comment.queue";
@@ -242,6 +254,54 @@ public class RabbitMQConfig {
                 .bind(noticeQueue())
                 .to(weiboTopicExchange())
                 .with("post.cancel");
+    }
+
+    // ======================== 评论通知队列 Bean ========================
+
+    @Bean
+    public Queue noticeCommentQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-dead-letter-exchange", NOTICE_COMMENT_DLX);
+        args.put("x-dead-letter-routing-key", NOTICE_COMMENT_DLQ_ROUTING_KEY);
+        return new Queue(NOTICE_COMMENT_QUEUE, true, false, false, args);
+    }
+
+    @Bean
+    public DirectExchange noticeCommentDeadLetterExchange() {
+        return new DirectExchange(NOTICE_COMMENT_DLX);
+    }
+
+    @Bean
+    public Queue noticeCommentDeadLetterQueue() {
+        return new Queue(NOTICE_COMMENT_DLQ, true);
+    }
+
+    @Bean
+    public Binding noticeCommentDeadLetterBinding() {
+        return BindingBuilder
+                .bind(noticeCommentDeadLetterQueue())
+                .to(noticeCommentDeadLetterExchange())
+                .with(NOTICE_COMMENT_DLQ_ROUTING_KEY);
+    }
+
+    @Bean
+    public Queue noticeCommentRetryQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-message-ttl", 5000);
+        args.put("x-dead-letter-exchange", "");
+        args.put("x-dead-letter-routing-key", NOTICE_COMMENT_QUEUE);
+        return new Queue(NOTICE_COMMENT_RETRY_QUEUE, true, false, false, args);
+    }
+
+    /**
+     * 监听评论通知（复用 comment.create，与 comment.queue 形成多消费者）
+     */
+    @Bean
+    public Binding noticeCommentBinding() {
+        return BindingBuilder
+                .bind(noticeCommentQueue())
+                .to(weiboTopicExchange())
+                .with("comment.create");
     }
 
     // ======================== 评论队列 Bean ========================

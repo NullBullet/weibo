@@ -246,7 +246,10 @@ public class CommentsServiceImpl implements CommentsService {
                 .content(content)
                 .createdAt(LocalDateTime.now()).build();
 
-        // Redis 操作同步执行，DB 写入通过 MQ 异步
+        // DB：同步插入评论，获取自增 ID（后续 MQ 通知需要 commentId）
+        commentsMapper.saveComment(comment);
+
+        // Redis 操作同步执行
         String statsKey = POST_STATS_KEY + statusId;
         redisTemplate.opsForHash().increment(statsKey, "commentCount", 1);
 
@@ -284,6 +287,7 @@ public class CommentsServiceImpl implements CommentsService {
                 .statusId(statusId)
                 .parentId(parentId)
                 .replyUserId(replyUserId)
+                .commentId(comment.getId())
                 .content(content)
                 .retryCount(0)
                 .build();

@@ -51,5 +51,12 @@ public interface NotificationsMapper {
 
     List<CommentNotificationRawDTO> getCommentNotifications(@Param("receiverId") Long receiverId);
 
+    @MapKey("id")
     List<Map<String, Object>> getSenderInfos(@Param("senderIds") Set<Long> senderIds);
+
+    void insertCommentNotification(@Param("receiverId") Long receiverId,
+                                    @Param("senderId") Long senderId,
+                                    @Param("targetType") Integer targetType,
+                                    @Param("targetId") Long targetId,
+                                    @Param("commentId") Long commentId);
 }

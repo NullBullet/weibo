@@ -1,7 +1,6 @@
 package com.jun.consumer;
 
 import com.jun.config.RabbitMQConfig;
-import com.jun.entity.Comment;
 import com.jun.mapper.CommentsMapper;
 import com.jun.mq.message.CommentMessage;
 import com.rabbitmq.client.Channel;
@@ -14,7 +13,6 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
 import static com.jun.config.RabbitMQConfig.COMMENT_MAX_RETRY_COUNT;
@@ -48,19 +46,7 @@ public class CommentConsumer {
         }
 
         try {
-            // DB: 插入 comments 表
-            Comment comment = Comment.builder()
-                    .statusId(message.getStatusId())
-                    .userId(message.getUserId())
-                    .parentId(message.getParentId())
-                    .replyUserId(message.getReplyUserId())
-                    .content(message.getContent())
-                    .createdAt(LocalDateTime.now())
-                    .build();
-
-            commentsMapper.saveComment(comment);
-
-            // DB: statuses.comments_count +1
+            // DB: statuses.comments_count +1（评论已在 Service 层同步插入）
             commentsMapper.updateStatusCommentCount(message.getStatusId());
 
             // 幂等标记（7天）
@@ -68,7 +54,7 @@ public class CommentConsumer {
 
             // 手动ACK
             channel.basicAck(deliveryTag, false);
-            log.info("评论消息消费成功: commentId={}", comment.getId());
+            log.info("评论消息消费成功: statusId={}", message.getStatusId());
 
         } catch (Exception e) {
             Integer retryCount = message.getRetryCount();
@@ -89,6 +75,7 @@ public class CommentConsumer {
                         message
                 );
             }
+
             channel.basicAck(deliveryTag, false);
         }
     }

@@ -50,6 +50,21 @@ public class RabbitListenerConfig {
         return factory;
     }
 
+    @Bean("noticeCommentFactory")
+    public SimpleRabbitListenerContainerFactory noticeCommentFactory(ConnectionFactory connectionFactory, MessageConverter jsonMessageConverter) {
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory);
+
+        factory.setMessageConverter(jsonMessageConverter);
+        factory.setAcknowledgeMode(AcknowledgeMode.MANUAL);
+
+        // 评论通知写入量与评论相近，配置一致
+        factory.setConcurrentConsumers(1);
+        factory.setMaxConcurrentConsumers(3);
+        factory.setPrefetchCount(1);
+        return factory;
+    }
+
     @Bean("commentFactory")
     public SimpleRabbitListenerContainerFactory commentFactory(ConnectionFactory connectionFactory, MessageConverter jsonMessageConverter) {
         SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
