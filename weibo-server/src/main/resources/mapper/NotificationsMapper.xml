@@ -92,4 +92,20 @@
           and like_count &lt;= 0
     </delete>
 
+    <select id="getCommentNotifications" resultType="com.jun.dto.CommentNotificationRawDTO">
+        select id as notificationId, sender_id as senderId, target_type as targetType,
+               target_id as targetId, comment_id as commentId,
+               create_time as createTime, is_read as isRead
+        from notification_comment
+        where receiver_id = #{receiverId}
+        order by create_time desc
+    </select>
+
+    <select id="getSenderInfos" resultType="map">
+        select id, nickname, avatar
+        from users
+        where id in
+        <foreach collection="senderIds" item="id" open="(" close=")" separator=",">#{id}</foreach>
+    </select>
+
 </mapper>

@@ -1,6 +1,7 @@
 package com.jun.mapper;
 
 import com.jun.WeiboServerApplicationTests;
+import com.jun.entity.Comment;
 import com.jun.entity.Statuses;
 import com.jun.entity.User;
 import com.jun.entity.UserStatistics;
@@ -57,4 +58,18 @@ public interface TestMapper {
                                 @Param("targetId") Long targetId,
                                 @Param("likeCount") Integer likeCount,
                                 @Param("lastLikeTime") LocalDateTime lastLikeTime);
+
+    // ======================== 评论通知初始化 ========================
+
+    @Select("select * from comments where is_deleted = 0 order by created_at asc")
+    List<Comment> getAllComments();
+
+    @Insert("insert into notification_comment(receiver_id, sender_id, target_type, target_id, comment_id, is_read, create_time) " +
+            "values(#{receiverId}, #{senderId}, #{targetType}, #{targetId}, #{commentId}, 0, #{createTime})")
+    void insertCommentNotification(@Param("receiverId") Long receiverId,
+                                   @Param("senderId") Long senderId,
+                                   @Param("targetType") Integer targetType,
+                                   @Param("targetId") Long targetId,
+                                   @Param("commentId") Long commentId,
+                                   @Param("createTime") LocalDateTime createTime);
 }

@@ -6,4 +6,6 @@ public interface NotificationsService {
     Result getLikeInfo();
 
     Result getLikeDetail(Integer targetId);
+
+    Result getCommentInfo();
 }

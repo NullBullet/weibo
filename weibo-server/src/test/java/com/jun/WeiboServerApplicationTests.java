@@ -1,5 +1,6 @@
 package com.jun;
 
+import com.jun.entity.Comment;
 import com.jun.entity.Statuses;
 import com.jun.entity.User;
 import com.jun.entity.UserStatistics;
@@ -264,7 +265,7 @@ public class WeiboServerApplicationTests {
      * 根据点赞表初始化通知 like 表：
      * 将 attitudes 按 (target_type, target_id) 聚合后写入 notification_like，接收者为微博/评论的作者。
      */
-    @Test
+    //@Test
     void initNotificationLike() {
         System.out.println(">>> 开始初始化 notification_like 表...");
 
@@ -307,6 +308,70 @@ public class WeiboServerApplicationTests {
         }
 
         System.out.println(">>> notification_like 初始化完成！共写入 " + inserted + " 条记录");
+    }
+
+    /**
+     * 根据评论表初始化通知 comment 表：
+     * 将 comments 数据写入 notification_comment：
+     *   - 一级评论 → target_type=1（帖子），接收者为帖子作者
+     *   - 回复评论 → target_type=2（评论），接收者为被回复人
+     *   自己评论自己的内容不发送通知。
+     */
+    //@Test
+    void initNotificationComment() {
+        System.out.println(">>> 开始初始化 notification_comment 表...");
+
+        List<Comment> comments = testMapper.getAllComments();
+        if (comments == null || comments.isEmpty()) {
+            System.out.println("评论表无数据，跳过。");
+            return;
+        }
+
+        int inserted = 0;
+        for (Comment comment : comments) {
+            Long senderId = comment.getUserId();
+            Long commentId = comment.getId();
+            Long parentId = comment.getParentId();
+            Long replyUserId = comment.getReplyUserId();
+            LocalDateTime createTime = comment.getCreatedAt();
+
+            Long receiverId;
+            Integer targetType;
+            Long targetId;
+
+            if (parentId == null) {
+                // 一级评论：通知帖子作者
+                receiverId = testMapper.getPostOwnerId(comment.getStatusId());
+                targetType = 1; // POST
+                targetId = comment.getStatusId();
+            } else {
+                // 回复评论：通知被回复的人
+                // 如果 replyUserId 为 null，则查询父评论的作者
+                if (replyUserId == null) {
+                    receiverId = testMapper.getCommentOwnerId(parentId);
+                } else {
+                    receiverId = replyUserId;
+                }
+                targetType = 2; // COMMENT
+                targetId = parentId;
+            }
+
+            // 跳过自己评论自己
+            if (receiverId == null || receiverId.equals(senderId)) {
+                continue;
+            }
+
+            testMapper.insertCommentNotification(receiverId, senderId, targetType, targetId, commentId, createTime);
+            inserted++;
+
+            System.out.println("通知 " + inserted + ": receiver=" + receiverId
+                    + ", sender=" + senderId
+                    + ", type=" + (targetType == 1 ? "帖子" : "评论")
+                    + ", target=" + targetId
+                    + ", comment=" + commentId);
+        }
+
+        System.out.println(">>> notification_comment 初始化完成！共写入 " + inserted + " 条记录");
     }
 }
 

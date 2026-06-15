@@ -1,5 +1,6 @@
 package com.jun.mapper;
 
+import com.jun.dto.CommentNotificationRawDTO;
 import com.jun.vo.LikeUserVO;
 import com.jun.vo.NotificationRawVO;
 import org.apache.ibatis.annotations.MapKey;
@@ -8,6 +9,7 @@ import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Mapper
 public interface NotificationsMapper {
@@ -46,4 +48,8 @@ public interface NotificationsMapper {
     void deleteZeroCount(@Param("receiverId") Long receiverId,
                          @Param("targetType") Integer targetType,
                          @Param("targetId") Long targetId);
+
+    List<CommentNotificationRawDTO> getCommentNotifications(@Param("receiverId") Long receiverId);
+
+    List<Map<String, Object>> getSenderInfos(@Param("senderIds") Set<Long> senderIds);
 }

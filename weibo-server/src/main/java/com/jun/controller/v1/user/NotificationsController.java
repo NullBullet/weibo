@@ -30,4 +30,9 @@ public class NotificationsController {
         return notificationsService.getLikeDetail(targetId);
     }
 
+    @GetMapping("/comments")
+    public Result comment(){
+        log.info("获取当前用户收到的评论列表");
+        return notificationsService.getCommentInfo();
+    }
 }
