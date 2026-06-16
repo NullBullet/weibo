@@ -76,6 +76,7 @@ public class RepostConsumer {
             map.put("likeCount", 0);
             map.put("commentCount", 0);
             map.put("viewCount", 0);
+            map.put("forwardCount", 0);
             map.put("createTime", createTimeStamp);
             redisTemplate.opsForHash().putAll(statsKey, map);
 
