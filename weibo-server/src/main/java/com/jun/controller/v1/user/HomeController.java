@@ -1,6 +1,7 @@
 package com.jun.controller.v1.user;
 
 import com.jun.dto.HomeQueryDTO;
+import com.jun.enumeration.TimelineType;
 import com.jun.result.Result;
 import com.jun.service.HomeService;
 import jakarta.annotation.Resource;
@@ -20,6 +21,15 @@ public class HomeController {
     @GetMapping("/timeline")
     public Result timeline(HomeQueryDTO homeQueryDTO){
         log.info("获取首页微博列表：{}",homeQueryDTO);
-        return homeService.getPosts(homeQueryDTO);
+        TimelineType type = TimelineType.fromValue(homeQueryDTO.getTimelineType());
+        switch (type) {
+            case HOT:
+                log.info("热门时间线");
+                return homeService.getHotPosts(homeQueryDTO);
+            case LATEST:
+                log.info("最新时间线");
+                return homeService.getLatestPosts(homeQueryDTO);
+        }
+        return Result.error("不支持的时间线类型");
     }
 }

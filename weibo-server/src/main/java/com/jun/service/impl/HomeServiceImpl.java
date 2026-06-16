@@ -4,6 +4,7 @@ import cn.hutool.json.JSONUtil;
 import com.jun.context.BaseContext;
 import com.jun.dto.HomeQueryDTO;
 import com.jun.entity.StatusImage;
+import com.jun.enumeration.TimelineType;
 import com.jun.mapper.HotMapper;
 import com.jun.result.Result;
 import com.jun.result.ScrollResult;
@@ -15,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.connection.RedisStringCommands;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.DefaultTypedTuple;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.types.Expiration;
 import org.springframework.stereotype.Service;
@@ -37,71 +39,156 @@ public class HomeServiceImpl implements HomeService {
     private RedisTemplate redisTemplate;
 
     @Override
-    public Result getPosts(HomeQueryDTO homeQueryDTO) {
+    public Result getLatestPosts(HomeQueryDTO homeQueryDTO) {
         Long userId = BaseContext.getCurrentId();
-
-        // 1. 分页参数处理
         Double lastScore = homeQueryDTO.getLastScore();
         Integer pageSize = homeQueryDTO.getPageSize();
         Integer offset = homeQueryDTO.getOffset();
 
-        if (pageSize == null || pageSize <= 0) {
-            pageSize = 10;
-        }
-        if (offset == null) {
-            offset = 0;
-        }
-        if (lastScore == null) {
-            lastScore = Double.POSITIVE_INFINITY;
-        }
+        if (pageSize == null || pageSize <= 0) pageSize = 10;
+        if (offset == null) offset = 0;
+        if (lastScore == null) lastScore = Double.POSITIVE_INFINITY;
 
-        // 2. 计算时间范围（startDate/endDate → epoch 秒）
         LocalDate startDate = homeQueryDTO.getStartDate();
         LocalDate endDate = homeQueryDTO.getEndDate();
-
         double minScore = Double.NEGATIVE_INFINITY;
         if (startDate != null) {
             minScore = startDate.atStartOfDay(ZoneOffset.UTC).toEpochSecond();
         }
-
-        // 游标往前翻时，不能超过 endDate 的结束时间
         double maxScore = lastScore;
         if (endDate != null) {
             double endOfDay = endDate.atTime(LocalTime.MAX).toEpochSecond(ZoneOffset.UTC);
             maxScore = Math.min(lastScore, endOfDay);
         }
 
-        // 3. 从收件箱 ZSET 获取 postIds
         String feedKey = FEED_USER_KEY + userId;
         Set<ZSetOperations.TypedTuple<String>> tuples =
                 redisTemplate.opsForZSet()
-                        .reverseRangeByScoreWithScores(
-                                feedKey,
-                                minScore,
-                                maxScore,
-                                offset,
-                                pageSize
-                        );
+                        .reverseRangeByScoreWithScores(feedKey, minScore, maxScore, offset, pageSize);
 
         if (tuples == null || tuples.isEmpty()) {
             return Result.success(new ScrollResult(null, 0, Collections.emptyList()));
         }
 
-        // 4. 批量从缓存获取帖子详情
         List<Long> statusIds = tuples.stream()
                 .map(t -> Long.valueOf(t.getValue()))
                 .toList();
 
+        return buildResult(userId, statusIds, tuples);
+    }
+
+    @Override
+    public Result getHotPosts(HomeQueryDTO homeQueryDTO) {
+        Long userId = BaseContext.getCurrentId();
+        Integer pageSize = homeQueryDTO.getPageSize();
+        Double lastScore = homeQueryDTO.getLastScore();
+        Integer offset = homeQueryDTO.getOffset();
+
+        if (pageSize == null || pageSize <= 0) pageSize = 10;
+        if (offset == null) offset = 0;
+
+        String feedKey = FEED_USER_KEY + userId;
+        Set<ZSetOperations.TypedTuple<String>> feedTuples =
+                redisTemplate.opsForZSet().reverseRangeWithScores(feedKey, 0, 999);
+
+        if (feedTuples == null || feedTuples.isEmpty()) {
+            return Result.success(new ScrollResult(null, 0, Collections.emptyList()));
+        }
+
+        List<Long> feedPostIds = feedTuples.stream()
+                .map(t -> Long.valueOf(t.getValue()))
+                .toList();
+
+        List<Object> hotScores = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+            for (Long pid : feedPostIds) {
+                connection.zSetCommands().zScore(HOT_POST_ZSET_KEY.getBytes(), pid.toString().getBytes());
+            }
+            return null;
+        });
+
+        // 分离热门和非热门帖子
+        List<UnifiedPost> hotPosts = new ArrayList<>();
+        List<UnifiedPost> nonHotPosts = new ArrayList<>();
+        for (int i = 0; i < feedPostIds.size(); i++) {
+            Long pid = feedPostIds.get(i);
+            double createTime = feedTuples.stream()
+                    .filter(t -> t.getValue().equals(pid.toString()))
+                    .findFirst().map(ZSetOperations.TypedTuple::getScore).orElse(0.0);
+            Object hotObj = i < hotScores.size() ? hotScores.get(i) : null;
+            if (hotObj instanceof Number hotNum) {
+                hotPosts.add(new UnifiedPost(pid, hotNum.doubleValue(), createTime));
+            } else {
+                nonHotPosts.add(new UnifiedPost(pid, createTime, createTime));
+            }
+        }
+        // 热门按热度降序，非热门按时间降序
+        hotPosts.sort((a, b) -> Double.compare(b.unifiedScore, a.unifiedScore));
+        nonHotPosts.sort((a, b) -> Double.compare(b.unifiedScore, a.unifiedScore));
+
+        // 拼接：热门在前，非热门在后
+        List<UnifiedPost> all = new ArrayList<>(hotPosts);
+        all.addAll(nonHotPosts);
+
+        // 游标分页
+        List<UnifiedPost> paged;
+        if (lastScore != null) {
+            int skip = 0;
+            int startIdx = -1;
+            for (int i = 0; i < all.size(); i++) {
+                UnifiedPost u = all.get(i);
+                if (u.unifiedScore < lastScore) { startIdx = i; break; }
+                else if (u.unifiedScore == lastScore) {
+                    if (skip < offset) { skip++; continue; }
+                    startIdx = i; break;
+                }
+            }
+            if (startIdx < 0) {
+                paged = Collections.emptyList();
+            } else {
+                paged = all.subList(startIdx, Math.min(startIdx + pageSize, all.size()));
+            }
+        } else {
+            paged = all.stream().skip(offset).limit(pageSize).toList();
+        }
+
+        if (paged.isEmpty()) return Result.success(new ScrollResult(null, 0, Collections.emptyList()));
+
+        List<Long> statusIds = paged.stream().map(UnifiedPost::id).toList();
+        Set<ZSetOperations.TypedTuple<String>> fakeTuples = new LinkedHashSet<>();
+        for (UnifiedPost up : paged) {
+            fakeTuples.add(new DefaultTypedTuple<>(up.id.toString(), up.unifiedScore));
+        }
+
+        ScrollResult scrollResult = (ScrollResult) buildResult(userId, statusIds, fakeTuples).getData();
+        if (scrollResult == null) return Result.success(new ScrollResult(null, 0, Collections.emptyList()));
+
+        double minUnifiedScore = paged.get(paged.size() - 1).unifiedScore;
+        int backwardCount = 0;
+        for (int i = paged.size() - 1; i >= 0; i--) {
+            if (paged.get(i).unifiedScore == minUnifiedScore) backwardCount++;
+            else break;
+        }
+
+        return Result.success(new ScrollResult(minUnifiedScore, backwardCount, scrollResult.getRecords()));
+    }
+
+    // ======================== 通用构建逻辑 ========================
+
+    /**
+     * 根据 statusIds 从缓存/DB 获取帖子详情，构建返回结果
+     */
+    private Result buildResult(Long userId, List<Long> statusIds,
+                                Set<ZSetOperations.TypedTuple<String>> tuples) {
+        // 1. 批量从缓存获取帖子详情
         List<String> keys = statusIds.stream().map(id -> POST_DETAIL_KEY + id).toList();
         List<String> jsonList = redisTemplate.opsForValue().multiGet(keys);
 
-        // 5. 找缺失的帖子 ID（缓存未命中）
+        // 2. 找缺失的帖子
         List<HotStatusVO> result = new ArrayList<>();
         List<Long> missIds = new ArrayList<>();
         for (int i = 0; i < statusIds.size(); i++) {
             String json = jsonList.get(i);
             Long id = statusIds.get(i);
-
             if (json != null && !json.isEmpty()) {
                 result.add(JSONUtil.toBean(json, HotStatusVO.class));
             } else {
@@ -109,12 +196,10 @@ public class HomeServiceImpl implements HomeService {
             }
         }
 
-        // 6. 批量查询数据库（缓存缺失）
+        // 3. 批量查询数据库（缓存缺失）
         if (!missIds.isEmpty()) {
             List<HotStatusVO> dbList = hotMapper.getPostByMissIds(missIds);
-
             if (!dbList.isEmpty()) {
-                // 6.1 图片
                 List<Long> missIdList = dbList.stream().map(HotStatusVO::getId).toList();
                 List<StatusImage> images = hotMapper.getImageByIds(missIdList);
                 Map<Long, List<StatusImage>> imageMap = images.stream()
@@ -124,54 +209,43 @@ public class HomeServiceImpl implements HomeService {
                     vo.setImages(imageMap.get(vo.getId()));
                 }
 
-                // 6.2 填充转发原微博
                 fillOriginalStatus(dbList, userId);
 
-                // 6.3 pipeline 回写缓存
                 redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
                     for (HotStatusVO vo : dbList) {
                         String key = POST_DETAIL_KEY + vo.getId();
                         String value = JSONUtil.toJsonStr(vo);
-
                         long expireTime = POST_DETAIL_TTL + new Random().nextInt(300);
                         connection.stringCommands().set(
-                                key.getBytes(),
-                                value.getBytes(),
+                                key.getBytes(), value.getBytes(),
                                 Expiration.seconds(expireTime),
                                 RedisStringCommands.SetOption.UPSERT
                         );
                     }
                     return null;
                 });
-
                 result.addAll(dbList);
             }
         }
 
-        // 7. 以 statusId 分类缓存
+        // 4. 按传入顺序重排
         Map<Long, HotStatusVO> map = result.stream()
                 .collect(Collectors.toMap(HotStatusVO::getId, v -> v));
 
-        // 8. 用户信息缓存
-        // 8.1 收集 userId（去重）
+        // 5. 用户信息
         List<Long> userIdList = statusIds.stream()
                 .map(id -> map.get(id).getUserId())
                 .distinct()
                 .toList();
 
-        // 8.2 批量查 Redis
-        List<String> userKeys = userIdList.stream()
-                .map(uid -> USER_INFO_KEY + uid)
-                .toList();
+        List<String> userKeys = userIdList.stream().map(uid -> USER_INFO_KEY + uid).toList();
         List<String> userJsonList = redisTemplate.opsForValue().multiGet(userKeys);
 
         Map<Long, UserVO> userMap = new HashMap<>();
         List<Long> missUserIds = new ArrayList<>();
-
         for (int i = 0; i < userIdList.size(); i++) {
             Long uid = userIdList.get(i);
             String json = (userJsonList != null) ? userJsonList.get(i) : null;
-
             if (json != null && !json.isEmpty()) {
                 userMap.put(uid, JSONUtil.toBean(json, UserVO.class));
             } else {
@@ -179,25 +253,17 @@ public class HomeServiceImpl implements HomeService {
             }
         }
 
-        // 8.3 回源 DB
         if (!missUserIds.isEmpty()) {
             List<UserVO> dbUsers = hotMapper.getUsersInfoByUserIds(missUserIds);
+            for (UserVO user : dbUsers) userMap.put(user.getId(), user);
 
-            for (UserVO user : dbUsers) {
-                userMap.put(user.getId(), user);
-            }
-
-            // 8.4 回写 Redis（pipeline）
             redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
                 for (UserVO user : dbUsers) {
                     String key = USER_INFO_KEY + user.getId();
                     String value = JSONUtil.toJsonStr(user);
-
                     long expire = USER_INFO_TTL + new Random().nextInt(3600);
-
                     connection.stringCommands().set(
-                            key.getBytes(),
-                            value.getBytes(),
+                            key.getBytes(), value.getBytes(),
                             Expiration.seconds(expire),
                             RedisStringCommands.SetOption.UPSERT
                     );
@@ -206,46 +272,35 @@ public class HomeServiceImpl implements HomeService {
             });
         }
 
-        // 9. 获取关注列表
+        // 6. 关注列表
         Set<Object> myFollowings = redisTemplate.opsForSet().members(FOLLOW_FOLLOWING_KEY + userId);
-        Set<Long> myFollowingsIds = myFollowings != null ?
-                myFollowings.stream()
-                        .map(id -> Long.valueOf(id.toString()))
-                        .collect(Collectors.toSet()) :
-                Collections.emptySet();
+        Set<Long> myFollowingsIds = myFollowings != null
+                ? myFollowings.stream().map(id -> Long.valueOf(id.toString())).collect(Collectors.toSet())
+                : Collections.emptySet();
 
-        // 10. 构建 finalList
+        // 7. 构建 finalList
         List<HotStatusVO> finalList = new ArrayList<>();
-
         for (Long id : statusIds) {
             HotStatusVO vo = map.get(id);
             if (vo == null) continue;
-
-            // 填充用户信息
             vo.setUser(userMap.get(vo.getUserId()));
-
-            // 判断是否关注
             if (userId == null || !userId.equals(vo.getUserId())) {
                 vo.setIsFollowed(myFollowingsIds.contains(vo.getUserId()));
             } else {
                 vo.setIsFollowed(null);
             }
-
             finalList.add(vo);
         }
 
-        // 11. 填充转发原微博并回写缓存
+        // 8. 填充原微博并回写缓存
         fillOriginalStatus(finalList, userId);
         redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
             for (HotStatusVO vo : finalList) {
                 String cacheKey = POST_DETAIL_KEY + vo.getId();
                 String cacheValue = JSONUtil.toJsonStr(vo);
-
                 long expireTime = POST_DETAIL_TTL + new Random().nextInt(300);
-
                 connection.stringCommands().set(
-                        cacheKey.getBytes(),
-                        cacheValue.getBytes(),
+                        cacheKey.getBytes(), cacheValue.getBytes(),
                         Expiration.seconds(expireTime),
                         RedisStringCommands.SetOption.UPSERT
                 );
@@ -253,138 +308,96 @@ public class HomeServiceImpl implements HomeService {
             return null;
         });
 
-        // 12. 获取即时统计数据（含原微博统计）
+        // 9. 即时统计数据
         for (HotStatusVO vo : finalList) {
             fillPostStats(vo);
-
-            HotStatusVO originalStatus = vo.getOriginalStatus();
-            if (originalStatus != null) {
-                fillPostStats(originalStatus);
-            }
+            if (vo.getOriginalStatus() != null) fillPostStats(vo.getOriginalStatus());
         }
 
-        // 13. 当前用户是否点赞（含原微博）
-        // 13.1 收集所有微博的 LikeKey（含原微博）
+        // 10. 点赞状态
         List<String> likeKeys = new ArrayList<>();
         for (HotStatusVO vo : finalList) {
             likeKeys.add(LIKE_POST_KEY + vo.getId());
-            if (vo.getOriginalStatus() != null) {
-                likeKeys.add(LIKE_POST_KEY + vo.getOriginalStatus().getId());
-            }
+            if (vo.getOriginalStatus() != null) likeKeys.add(LIKE_POST_KEY + vo.getOriginalStatus().getId());
         }
-
-        // 13.2 批量检查
         List<Object> likeResults = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-            for (String key : likeKeys) {
+            for (String key : likeKeys)
                 connection.setCommands().sIsMember(key.getBytes(), userId.toString().getBytes());
-            }
             return null;
         });
-
-        // 13.3 回填
         int idx = 0;
         for (HotStatusVO vo : finalList) {
             Boolean isMember = (Boolean) likeResults.get(idx++);
             vo.setIsLiked(isMember != null && isMember);
-
             if (vo.getOriginalStatus() != null) {
                 Boolean origIsMember = (Boolean) likeResults.get(idx++);
                 vo.getOriginalStatus().setIsLiked(origIsMember != null && origIsMember);
             }
         }
 
-        // 14. 计算下一页游标
-        double minTupleScore = tuples.stream()
+        // 11. 游标
+        double minScore = tuples.stream()
                 .mapToDouble(ZSetOperations.TypedTuple::getScore)
                 .min()
                 .orElse(0);
-
         int newOffset = 0;
-
         for (ZSetOperations.TypedTuple<String> tuple : tuples) {
-            if (tuple.getScore() == minTupleScore) {
-                newOffset++;
-            }
+            if (tuple.getScore() == minScore) newOffset++;
         }
 
-        // 15. 返回
-        return Result.success(new ScrollResult(minTupleScore, newOffset, finalList));
+        return Result.success(new ScrollResult(minScore, newOffset, finalList));
     }
+
+    // ======================== 记录类型 ========================
+
+    private record UnifiedPost(Long id, double unifiedScore, double createTime) {}
 
     // ======================== 以下为私有辅助方法 ========================
 
-    /**
-     * 填充转发原微博
-     */
     private void fillOriginalStatus(List<HotStatusVO> finalList, Long currentUserId) {
-        // 1. 收集 originalIds
         List<Long> originalIds = finalList.stream()
                 .filter(vo -> vo.getOriginalStatusId() != null)
                 .filter(vo -> vo.getOriginalStatus() == null)
                 .map(HotStatusVO::getOriginalStatusId)
                 .distinct()
                 .toList();
+        if (originalIds.isEmpty()) return;
 
-        if (originalIds.isEmpty()) {
-            return;
-        }
-
-        // 2. 先查 Redis
-        List<String> cacheKeys = originalIds.stream()
-                .map(id -> POST_DETAIL_KEY + id)
-                .toList();
-
+        List<String> cacheKeys = originalIds.stream().map(id -> POST_DETAIL_KEY + id).toList();
         List<String> jsonList = redisTemplate.opsForValue().multiGet(cacheKeys);
-
         Map<Long, HotStatusVO> originalMap = new HashMap<>();
         List<Long> missIds = new ArrayList<>();
-
         for (int i = 0; i < originalIds.size(); i++) {
             Long id = originalIds.get(i);
             String json = jsonList != null ? jsonList.get(i) : null;
-
             if (json != null && !json.isEmpty()) {
-                HotStatusVO vo = JSONUtil.toBean(json, HotStatusVO.class);
-                originalMap.put(id, vo);
+                originalMap.put(id, JSONUtil.toBean(json, HotStatusVO.class));
             } else {
                 missIds.add(id);
             }
         }
 
-        // 3. miss → DB
         if (!missIds.isEmpty()) {
             List<HotStatusVO> dbList = hotMapper.getPostByIds(missIds);
-
             if (!dbList.isEmpty()) {
-                // 3.1 图片
                 List<StatusImage> images = hotMapper.getImageByIds(missIds);
                 Map<Long, List<StatusImage>> imageMap = images.stream()
                         .collect(Collectors.groupingBy(StatusImage::getStatusId));
-
-                // 3.2 用户
-                List<Long> userIds = dbList.stream()
-                        .map(HotStatusVO::getUserId)
-                        .distinct()
-                        .toList();
-
+                List<Long> userIds = dbList.stream().map(HotStatusVO::getUserId).distinct().toList();
                 List<UserVO> users = hotMapper.getUsersInfoByUserIds(userIds);
                 Map<Long, UserVO> userMap = users.stream().collect(Collectors.toMap(UserVO::getId, v -> v));
-
                 for (HotStatusVO vo : dbList) {
                     vo.setImages(imageMap.get(vo.getId()));
                     vo.setUser(userMap.get(vo.getUserId()));
                     originalMap.put(vo.getId(), vo);
                 }
-
-                // 3.3 回写缓存
                 redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
                     for (HotStatusVO vo : dbList) {
                         String key = POST_DETAIL_KEY + vo.getId();
                         String value = JSONUtil.toJsonStr(vo);
                         long expire = POST_DETAIL_TTL + new Random().nextInt(300);
                         connection.stringCommands().set(
-                                key.getBytes(),
-                                value.getBytes(),
+                                key.getBytes(), value.getBytes(),
                                 Expiration.seconds(expire),
                                 RedisStringCommands.SetOption.UPSERT
                         );
@@ -394,51 +407,34 @@ public class HomeServiceImpl implements HomeService {
             }
         }
 
-        // 4. 批量填充实时统计
         List<Object> statsList = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-            for (Long id : originalIds) {
-                connection.hashCommands().hGetAll(
-                        (POST_STATS_KEY + id).getBytes()
-                );
-            }
+            for (Long id : originalIds)
+                connection.hashCommands().hGetAll((POST_STATS_KEY + id).getBytes());
             return null;
         });
-
         for (int i = 0; i < originalIds.size(); i++) {
             Long id = originalIds.get(i);
             HotStatusVO vo = originalMap.get(id);
             if (vo == null) continue;
-
             Object obj = statsList.get(i);
             if (obj instanceof Map<?, ?> stats) {
-                Object likeObj = stats.get("likeCount".getBytes());
-                Object commentObj = stats.get("commentCount".getBytes());
-                Object repostObj = stats.get("forwardCount".getBytes());
-                Object viewObj = stats.get("viewCount".getBytes());
-
-                vo.setAttitudesCount(likeObj == null ? 0 : Integer.parseInt(new String((byte[]) likeObj)));
-                vo.setCommentsCount(commentObj == null ? 0 : Integer.parseInt(new String((byte[]) commentObj)));
-                vo.setRepostsCount(repostObj == null ? 0 : Integer.parseInt(new String((byte[]) repostObj)));
-                vo.setViewsCount(viewObj == null ? 0 : Integer.parseInt(new String((byte[]) viewObj)));
+                vo.setAttitudesCount(parseStatBytes(stats, "likeCount"));
+                vo.setCommentsCount(parseStatBytes(stats, "commentCount"));
+                vo.setRepostsCount(parseStatBytes(stats, "forwardCount"));
+                vo.setViewsCount(parseStatBytes(stats, "viewCount"));
             }
         }
 
-        // 5. 批量判断点赞
         if (currentUserId != null) {
             List<Object> likeResults = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-                for (Long id : originalIds) {
+                for (Long id : originalIds)
                     connection.setCommands().sIsMember(
-                            (LIKE_POST_KEY + id).getBytes(),
-                            currentUserId.toString().getBytes()
-                    );
-                }
+                            (LIKE_POST_KEY + id).getBytes(), currentUserId.toString().getBytes());
                 return null;
             });
-
             for (int i = 0; i < originalIds.size(); i++) {
                 HotStatusVO vo = originalMap.get(originalIds.get(i));
                 if (vo == null) continue;
-
                 Boolean liked = (Boolean) likeResults.get(i);
                 vo.setIsLiked(liked != null && liked);
             }
@@ -446,28 +442,26 @@ public class HomeServiceImpl implements HomeService {
             originalMap.values().forEach(vo -> vo.setIsLiked(false));
         }
 
-        // 6. 回填 originalStatus
         for (HotStatusVO vo : finalList) {
-            if (vo.getOriginalStatusId() != null && vo.getOriginalStatus() == null) {
+            if (vo.getOriginalStatusId() != null && vo.getOriginalStatus() == null)
                 vo.setOriginalStatus(originalMap.get(vo.getOriginalStatusId()));
-            }
         }
     }
 
-    /**
-     * 从 Redis 填充帖子的实时统计数据
-     */
     private void fillPostStats(HotStatusVO vo) {
         String statsKey = POST_STATS_KEY + vo.getId();
-
         Object likeObj = redisTemplate.opsForHash().get(statsKey, "likeCount");
         Object commentObj = redisTemplate.opsForHash().get(statsKey, "commentCount");
         Object forwardObj = redisTemplate.opsForHash().get(statsKey, "forwardCount");
         Object viewObj = redisTemplate.opsForHash().get(statsKey, "viewCount");
-
         vo.setAttitudesCount(likeObj == null ? 0 : Integer.parseInt(likeObj.toString()));
         vo.setCommentsCount(commentObj == null ? 0 : Integer.parseInt(commentObj.toString()));
         vo.setRepostsCount(forwardObj == null ? 0 : Integer.parseInt(forwardObj.toString()));
         vo.setViewsCount(viewObj == null ? 0 : Integer.parseInt(viewObj.toString()));
+    }
+
+    private int parseStatBytes(Map<?, ?> stats, String field) {
+        Object val = stats.get(field.getBytes());
+        return val == null ? 0 : Integer.parseInt(new String((byte[]) val));
     }
 }

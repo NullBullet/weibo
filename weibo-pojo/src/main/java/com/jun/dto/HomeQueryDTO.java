@@ -34,4 +34,9 @@ public class HomeQueryDTO implements Serializable {
      * 与 lastScore 相同 score 的偏移量
      */
     private Integer offset;
+
+    /**
+     * 时间线类型：1-热门，2-最新（默认）
+     */
+    private Integer timelineType;
 }
