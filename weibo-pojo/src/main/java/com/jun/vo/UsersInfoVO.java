@@ -13,4 +13,7 @@ public class UsersInfoVO {
      * 用户类型：0-普通用户，1-大V用户
      */
     private Integer userType;
+
+    /** 当前登录用户是否关注该用户 */
+    private Boolean isFollowing;
 }

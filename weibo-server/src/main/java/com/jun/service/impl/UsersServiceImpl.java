@@ -569,12 +569,22 @@ public class UsersServiceImpl implements UsersService {
 
         String cacheKey = USER_PROFILE_KEY + userId;
 
+        // 当前登录用户（可能为空，未登录时查访客页）
+        Long currentUserId = BaseContext.getCurrentId();
+
         //1. 查缓存（不含 stats，stats 从 Redis 实时取）
         Object cacheJson = redisTemplate.opsForValue().get(cacheKey);
         if (cacheJson != null) {
             try {
                 UsersInfoVO cached = JSONUtil.toBean(cacheJson.toString(), UsersInfoVO.class);
                 fillUserStats(cached, userId);
+
+                // 是否关注
+                if (currentUserId != null && !currentUserId.equals(userId)) {
+                    cached.setIsFollowing(
+                            redisTemplate.opsForSet().isMember(FOLLOW_FOLLOWING_KEY + currentUserId, userId.toString()));
+                }
+
                 return Result.success(cached);
             } catch (Exception e) {
                 log.warn("用户信息缓存反序列化失败 key={}", cacheKey, e);
@@ -598,6 +608,12 @@ public class UsersServiceImpl implements UsersService {
 
         //4. 从 Redis 实时获取 stats
         fillUserStats(usersInfoVO, userId);
+
+        //5. 是否关注
+        if (currentUserId != null && !currentUserId.equals(userId)) {
+            usersInfoVO.setIsFollowing(
+                    redisTemplate.opsForSet().isMember(FOLLOW_FOLLOWING_KEY + currentUserId, userId.toString()));
+        }
 
         return Result.success(usersInfoVO);
     }
