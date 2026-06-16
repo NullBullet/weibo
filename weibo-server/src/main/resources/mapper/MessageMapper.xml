@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.jun.mapper.MessageMapper">
+
+    <!-- ==================== Conversation ==================== -->
+
+    <insert id="insertConversation" useGeneratedKeys="true" keyProperty="id">
+        insert into conversation (user1_id, user2_id, create_time)
+        values (#{user1Id}, #{user2Id}, #{createTime})
+    </insert>
+
+    <update id="updateConversationLastMessage">
+        update conversation
+        set last_message = #{lastMessage}, last_message_time = #{lastMessageTime}
+        where id = #{conversationId}
+    </update>
+
+    <select id="selectConversationById" resultType="com.jun.entity.Conversation">
+        select * from conversation where id = #{id}
+    </select>
+
+    <select id="selectConversationList" resultType="com.jun.vo.ConversationVO">
+        select
+            cu.conversation_id as conversationId,
+            cu.unread_count as unreadCount,
+            case when c.user1_id = #{userId} then c.user2_id else c.user1_id end as otherUserId,
+            u.nickname,
+            u.avatar,
+            c.last_message as lastMessage,
+            date_format(c.last_message_time, '%Y-%m-%d %H:%i:%s') as lastMessageTime
+        from conversation_user cu
+        join conversation c on cu.conversation_id = c.id
+        join users u on (case when c.user1_id = #{userId} then c.user2_id else c.user1_id end) = u.id
+        where cu.user_id = #{userId}
+        order by c.last_message_time desc
+    </select>
+
+    <!-- ==================== ConversationUser ==================== -->
+
+    <insert id="insertConversationUser" useGeneratedKeys="true" keyProperty="id">
+        insert into conversation_user (conversation_id, user_id, create_time)
+        values (#{conversationId}, #{userId}, #{createTime})
+    </insert>
+
+    <update id="incrementUnreadCount">
+        update conversation_user
+        set unread_count = unread_count + 1
+        where conversation_id = #{conversationId} and user_id = #{userId}
+    </update>
+
+    <update id="resetUnreadCount">
+        update conversation_user
+        set unread_count = 0, last_read_message_id = #{lastReadMessageId}
+        where conversation_id = #{conversationId} and user_id = #{userId}
+    </update>
+
+    <!-- ==================== PrivateMessage ==================== -->
+
+    <insert id="insertMessage" useGeneratedKeys="true" keyProperty="id">
+        insert into private_message (conversation_id, sender_id, receiver_id, content, create_time)
+        values (#{conversationId}, #{senderId}, #{receiverId}, #{content}, #{createTime})
+    </insert>
+
+    <update id="updateMessagesRead">
+        update private_message
+        set is_read = 1
+        where conversation_id = #{conversationId} and receiver_id = #{userId} and is_read = 0
+    </update>
+
+    <select id="selectMessagesByPage" resultType="com.jun.vo.MessageVO">
+        select
+            id as messageId,
+            sender_id as senderId,
+            content,
+            date_format(create_time, '%Y-%m-%d %H:%i:%s') as createTime
+        from private_message
+        where conversation_id = #{conversationId}
+        order by create_time desc
+    </select>
+</mapper>
