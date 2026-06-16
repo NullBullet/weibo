@@ -4,10 +4,13 @@ import com.jun.context.BaseContext;
 import com.jun.exception.FollowFailException;
 import com.jun.result.Result;
 import com.jun.service.FollowService;
+import com.jun.entity.Statuses;
 import com.jun.mapper.FollowMapper;
 import jakarta.annotation.Resource;
 
+import java.time.ZoneOffset;
 import java.util.List;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +44,24 @@ public class FollowServiceImpl implements FollowService {
         redisTemplate.opsForSet().add(FOLLOW_FANS_KEY + targetUserId, currentUserId.toString());
         redisTemplate.opsForHash().increment(USER_STATS_KEY + currentUserId, "followingCount", 1);
         redisTemplate.opsForHash().increment(USER_STATS_KEY + targetUserId, "followersCount", 1);
+
+        // 回填历史微博到收件箱
+        String feedKey = FEED_USER_KEY + currentUserId;
+        List<Statuses> recentPosts = followMapper.getRecentPostsByUserId(targetUserId);
+        if (recentPosts != null && !recentPosts.isEmpty()) {
+            redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+                for (Statuses post : recentPosts) {
+                    double score = post.getCreatedAt().toEpochSecond(ZoneOffset.UTC);
+                    connection.zSetCommands().zAdd(
+                            feedKey.getBytes(),
+                            score,
+                            post.getId().toString().getBytes()
+                    );
+                }
+                return null;
+            });
+        }
+
         return Result.success("关注成功");
     }
 

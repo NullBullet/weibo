@@ -1,5 +1,6 @@
 package com.jun.mapper;
 
+import com.jun.entity.Statuses;
 import org.apache.ibatis.annotations.*;
 
 import java.util.List;
@@ -26,4 +27,7 @@ public interface FollowMapper {
 
     @Select("select id from statuses where user_id = #{userId} and is_deleted = 0")
     List<Long> getPostIdsByUserId(@Param("userId") Long userId);
+
+    @Select("select id, created_at from statuses where user_id = #{userId} and is_deleted = 0 order by created_at desc limit 200")
+    List<Statuses> getRecentPostsByUserId(@Param("userId") Long userId);
 }
