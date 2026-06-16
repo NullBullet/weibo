@@ -6,6 +6,8 @@ import com.jun.result.Result;
 import com.jun.service.FollowService;
 import com.jun.mapper.FollowMapper;
 import jakarta.annotation.Resource;
+
+import java.util.List;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,6 +61,14 @@ public class FollowServiceImpl implements FollowService {
         redisTemplate.opsForSet().remove(FOLLOW_FANS_KEY + targetUserId, currentUserId.toString());
         redisTemplate.opsForHash().increment(USER_STATS_KEY + currentUserId, "followingCount", -1);
         redisTemplate.opsForHash().increment(USER_STATS_KEY + targetUserId, "followersCount", -1);
+
+        // 清理收件箱：删除被取关用户的帖子
+        String feedKey = FEED_USER_KEY + currentUserId;
+        List<Long> postIds = followMapper.getPostIdsByUserId(targetUserId);
+        if (postIds != null && !postIds.isEmpty()) {
+            redisTemplate.opsForZSet().remove(feedKey, postIds.stream().map(String::valueOf).toArray());
+        }
+
         return Result.success("取关成功");
     }
 

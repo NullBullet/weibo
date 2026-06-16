@@ -2,6 +2,8 @@ package com.jun.mapper;
 
 import org.apache.ibatis.annotations.*;
 
+import java.util.List;
+
 @Mapper
 public interface FollowMapper {
     @Insert("insert into user_following  (followee_id, follower_id) values (#{targetUserId},#{currentUserId});")
@@ -21,4 +23,7 @@ public interface FollowMapper {
 
     @Update("update user_statistics set followers_count = GREATEST(0, followers_count + #{delta}) where user_id = #{userId}")
     int updateFollowersCount(@Param("userId") Long userId, @Param("delta") int delta);
+
+    @Select("select id from statuses where user_id = #{userId} and is_deleted = 0")
+    List<Long> getPostIdsByUserId(@Param("userId") Long userId);
 }
