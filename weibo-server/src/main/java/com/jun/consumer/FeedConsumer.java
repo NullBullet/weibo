@@ -51,7 +51,7 @@ public class FeedConsumer {
             Set<String> fans = redisTemplate.opsForSet().members(fansKey);
 
             if (fans != null && !fans.isEmpty()) {
-                // 2. 推送到每个粉丝的收件箱
+                // 2. 推送到每个粉丝的收件箱 + 裁剪到最近 200 条
                 for (String fanId : fans) {
                     String feedKey = FEED_USER_KEY + fanId;
                     redisTemplate.opsForZSet().add(
@@ -59,6 +59,8 @@ public class FeedConsumer {
                             message.getStatusId().toString(),
                             message.getCreateTime().doubleValue()
                     );
+                    // 只保留最近 200 条
+                    redisTemplate.opsForZSet().removeRange(feedKey, 0, -201);
                 }
             }
 
