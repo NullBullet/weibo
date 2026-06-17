@@ -9,6 +9,7 @@ import com.jun.entity.UserStatistics;
 import com.jun.vo.StatusVO;
 import com.jun.vo.UserCountVO;
 import com.jun.vo.UsersInfoVO;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -37,6 +38,10 @@ public interface UsersMapper {
 
     @Select("select avatar from users where id = #{userId}")
     String getAvatarByUserId(Long userId);
+
+    @Insert("insert into user_statistics(user_id, following_count, followers_count, statuses_count, likes_count, updated_at) " +
+            "values(#{userId}, 0, 0, 0, 0, NOW())")
+    void initUserStatistics(@Param("userId") Long userId);
 
     Page<StatusVO> getPostByUserId(StatusPageQueryDTO statusPageQueryDTO);
 

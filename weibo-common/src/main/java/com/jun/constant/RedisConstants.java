@@ -52,4 +52,11 @@ public class RedisConstants {
 
     //活跃用户    active_users -> ZSET (userId, loginTimestampMs)
     public static final String ACTIVE_USERS_KEY = "active:users";
+
+    //验证码    captcha:{captchaId} -> code
+    public static final String CAPTCHA_KEY = "captcha:";
+    public static final Long CAPTCHA_TTL = 300L;
+
+    //验证码IP限制    ip:captcha:{ip} -> count
+    public static final String IP_CAPTCHA_KEY = "ip:captcha:";
 }
