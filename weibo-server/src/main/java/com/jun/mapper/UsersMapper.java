@@ -6,6 +6,7 @@ import com.jun.dto.UserProfileDTO;
 import com.jun.entity.StatusImage;
 import com.jun.entity.User;
 import com.jun.entity.UserStatistics;
+import com.jun.vo.FollowUserVO;
 import com.jun.vo.StatusVO;
 import com.jun.vo.UserCountVO;
 import com.jun.vo.UsersInfoVO;
@@ -42,6 +43,12 @@ public interface UsersMapper {
     @Insert("insert into user_statistics(user_id, following_count, followers_count, statuses_count, likes_count, updated_at) " +
             "values(#{userId}, 0, 0, 0, 0, NOW())")
     void initUserStatistics(@Param("userId") Long userId);
+
+    Page<FollowUserVO> getFollowingList(@Param("userId") Long userId, @Param("keyword") String keyword);
+
+    Page<FollowUserVO> getFollowingActiveList(@Param("userId") Long userId, @Param("keyword") String keyword);
+
+    Page<FollowUserVO> getFollowerList(@Param("userId") Long userId, @Param("keyword") String keyword);
 
     Page<StatusVO> getPostByUserId(StatusPageQueryDTO statusPageQueryDTO);
 

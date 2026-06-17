@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
+import com.jun.dto.FollowQueryDTO;
 import com.jun.dto.ScrollDTO;
 import com.jun.dto.StatusPageQueryDTO;
 import com.jun.dto.UserProfileDTO;
@@ -14,6 +15,7 @@ import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.result.ScrollResult;
 import com.jun.utils.OssUtil;
+import com.jun.vo.FollowUserVO;
 import com.jun.vo.StatusVO;
 import com.jun.vo.UserCountVO;
 import com.jun.vo.UsersInfoVO;
@@ -861,6 +863,67 @@ public class UsersServiceImpl implements UsersService {
         vo.setCommentsCount(commentObj == null ? 0 : Integer.parseInt(commentObj.toString()));
         vo.setRepostsCount(forwardObj == null ? 0 : Integer.parseInt(forwardObj.toString()));
         vo.setViewsCount(viewObj == null ? 0 : Integer.parseInt(viewObj.toString()));
+    }
+
+    @Override
+    public Result<PageResult> getFollowingList(FollowQueryDTO dto) {
+        Long currentUserId = BaseContext.getCurrentId();
+        Long targetId = dto.getTargetId() != null ? dto.getTargetId() : currentUserId;
+        Integer page = dto.getPage() != null && dto.getPage() > 0 ? dto.getPage() : 1;
+        Integer pageSize = dto.getPageSize() != null && dto.getPageSize() > 0 ? dto.getPageSize() : 10;
+
+        PageHelper.startPage(page, pageSize);
+        Page<FollowUserVO> p = usersMapper.getFollowingList(targetId, dto.getKeyword());
+
+        boolean isSelf = Objects.equals(targetId, currentUserId);
+        Set<Long> followingIds = isSelf ? Collections.emptySet() : getFollowingIdSet(currentUserId);
+
+        for (FollowUserVO u : p) {
+            u.setIsFollowed(isSelf || followingIds.contains(u.getId()));
+        }
+        return Result.success(new PageResult(p.getTotal(), p.getResult()));
+    }
+
+    @Override
+    public Result<PageResult> getFollowingActiveList(FollowQueryDTO dto) {
+        Long currentUserId = BaseContext.getCurrentId();
+        Long targetId = dto.getTargetId() != null ? dto.getTargetId() : currentUserId;
+        Integer page = dto.getPage() != null && dto.getPage() > 0 ? dto.getPage() : 1;
+        Integer pageSize = dto.getPageSize() != null && dto.getPageSize() > 0 ? dto.getPageSize() : 10;
+
+        PageHelper.startPage(page, pageSize);
+        Page<FollowUserVO> p = usersMapper.getFollowingActiveList(targetId, dto.getKeyword());
+
+        boolean isSelf = Objects.equals(targetId, currentUserId);
+        Set<Long> followingIds = isSelf ? Collections.emptySet() : getFollowingIdSet(currentUserId);
+
+        for (FollowUserVO u : p) {
+            u.setIsFollowed(isSelf || followingIds.contains(u.getId()));
+        }
+        return Result.success(new PageResult(p.getTotal(), p.getResult()));
+    }
+
+    @Override
+    public Result<PageResult> getFollowerList(FollowQueryDTO dto) {
+        Long currentUserId = BaseContext.getCurrentId();
+        Long targetId = dto.getTargetId() != null ? dto.getTargetId() : currentUserId;
+        Integer page = dto.getPage() != null && dto.getPage() > 0 ? dto.getPage() : 1;
+        Integer pageSize = dto.getPageSize() != null && dto.getPageSize() > 0 ? dto.getPageSize() : 10;
+
+        PageHelper.startPage(page, pageSize);
+        Page<FollowUserVO> p = usersMapper.getFollowerList(targetId, dto.getKeyword());
+
+        Set<Long> followingIds = getFollowingIdSet(currentUserId);
+        for (FollowUserVO u : p) {
+            u.setIsFollowed(followingIds.contains(u.getId()));
+        }
+        return Result.success(new PageResult(p.getTotal(), p.getResult()));
+    }
+
+    private Set<Long> getFollowingIdSet(Long userId) {
+        Set<Object> raw = redisTemplate.opsForSet().members(FOLLOW_FOLLOWING_KEY + userId);
+        if (raw == null) return Collections.emptySet();
+        return raw.stream().map(o -> Long.valueOf(o.toString())).collect(Collectors.toSet());
     }
 
 }

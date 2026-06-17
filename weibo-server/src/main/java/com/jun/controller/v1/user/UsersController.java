@@ -1,5 +1,6 @@
 package com.jun.controller.v1.user;
 
+import com.jun.dto.FollowQueryDTO;
 import com.jun.dto.ScrollDTO;
 import com.jun.dto.StatusPageQueryDTO;
 import com.jun.dto.UserProfileDTO;
@@ -54,5 +55,23 @@ public class UsersController {
     public Result<ScrollResult> userPosts(@PathVariable Long userId, ScrollDTO scrollDTO) {
         log.info("获取指定用户帖子列表:{}", userId);
         return usersService.getUserPosts(userId, scrollDTO);
+    }
+
+    @GetMapping("/following")
+    public Result<PageResult> following(FollowQueryDTO dto) {
+        log.info("获取关注列表: {}", dto);
+        return usersService.getFollowingList(dto);
+    }
+
+    @GetMapping("/followers")
+    public Result<PageResult> followers(FollowQueryDTO dto) {
+        log.info("获取粉丝列表: {}", dto);
+        return usersService.getFollowerList(dto);
+    }
+
+    @GetMapping("/following/active")
+    public Result<PageResult> followingActive(FollowQueryDTO dto) {
+        log.info("获取最新发博关注列表: {}", dto);
+        return usersService.getFollowingActiveList(dto);
     }
 }

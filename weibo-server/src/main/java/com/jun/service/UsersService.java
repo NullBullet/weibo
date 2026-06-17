@@ -1,4 +1,5 @@
 package com.jun.service;
+import com.jun.dto.FollowQueryDTO;
 import com.jun.dto.ScrollDTO;
 import com.jun.dto.StatusPageQueryDTO;
 import com.jun.dto.UserProfileDTO;
@@ -20,4 +21,10 @@ public interface UsersService {
     Result<UsersInfoVO> getUserInfo(Long userId);
 
     Result<ScrollResult> getUserPosts(Long userId, ScrollDTO scrollDTO);
+
+    Result<PageResult> getFollowingList(FollowQueryDTO dto);
+
+    Result<PageResult> getFollowingActiveList(FollowQueryDTO dto);
+
+    Result<PageResult> getFollowerList(FollowQueryDTO dto);
 }

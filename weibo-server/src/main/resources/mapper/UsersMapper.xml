@@ -43,4 +43,30 @@
             #{id}
         </foreach>
     </select>
+
+    <select id="getFollowingList" resultType="com.jun.vo.FollowUserVO">
+        select u.id, u.username, u.nickname, u.avatar, u.bio
+        from user_following f join users u on f.followee_id = u.id
+        where f.follower_id = #{userId}
+          and (#{keyword} is null or u.nickname like concat('%', #{keyword}, '%'))
+        order by f.id desc
+    </select>
+
+    <select id="getFollowingActiveList" resultType="com.jun.vo.FollowUserVO">
+        select u.id, u.username, u.nickname, u.avatar, u.bio
+        from user_following f join users u on f.followee_id = u.id
+        left join statuses s on f.followee_id = s.user_id and s.is_deleted = 0
+        where f.follower_id = #{userId}
+          and (#{keyword} is null or u.nickname like concat('%', #{keyword}, '%'))
+        group by u.id, u.username, u.nickname, u.avatar, u.bio
+        order by max(s.created_at) desc
+    </select>
+
+    <select id="getFollowerList" resultType="com.jun.vo.FollowUserVO">
+        select u.id, u.username, u.nickname, u.avatar, u.bio
+        from user_follower f join users u on f.follower_id = u.id
+        where f.followee_id = #{userId}
+          and (#{keyword} is null or u.nickname like concat('%', #{keyword}, '%'))
+        order by f.id desc
+    </select>
 </mapper>
