@@ -1,6 +1,7 @@
 package com.jun.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.jun.enumeration.TimelineType;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -38,5 +39,5 @@ public class HomeQueryDTO implements Serializable {
     /**
      * 时间线类型：1-热门，2-最新（默认）
      */
-    private Integer timelineType;
+    private TimelineType timelineType;
 }

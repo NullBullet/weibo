@@ -2,6 +2,7 @@ package com.jun.config;
 
 import com.jun.converter.StringToSearchTypeConverter;
 import com.jun.converter.StringToTargetTypeConverter;
+import com.jun.converter.StringToTimelineTypeConverter;
 import com.jun.interceptor.JwtTokenUserInterceptor;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +23,8 @@ public class WebMvcConfiguration implements WebMvcConfigurer {
     private StringToSearchTypeConverter stringToSearchTypeConverter;
     @Resource
     private StringToTargetTypeConverter stringToTargetTypeConverter;
+    @Resource
+    private StringToTimelineTypeConverter stringToTimelineTypeConverter;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
@@ -40,5 +43,6 @@ public class WebMvcConfiguration implements WebMvcConfigurer {
         log.info("开始注册转换器...");
         registry.addConverter(stringToSearchTypeConverter);
         registry.addConverter(stringToTargetTypeConverter);
+        registry.addConverter(stringToTimelineTypeConverter);
     }
 }

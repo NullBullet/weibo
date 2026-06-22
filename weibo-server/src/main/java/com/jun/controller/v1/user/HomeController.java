@@ -21,7 +21,10 @@ public class HomeController {
     @GetMapping("/timeline")
     public Result timeline(HomeQueryDTO homeQueryDTO){
         log.info("获取首页微博列表：{}",homeQueryDTO);
-        TimelineType type = TimelineType.fromValue(homeQueryDTO.getTimelineType());
+        TimelineType type = homeQueryDTO.getTimelineType();
+        if (type == null) {
+            type = TimelineType.LATEST;
+        }
         switch (type) {
             case HOT:
                 log.info("热门时间线");
