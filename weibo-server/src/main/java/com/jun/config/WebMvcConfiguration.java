@@ -8,14 +8,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.format.FormatterRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurationSupport;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
  * 配置类，注册web层相关组件
  */
 @Configuration
 @Slf4j
-public class WebMvcConfiguration extends WebMvcConfigurationSupport {
+public class WebMvcConfiguration implements WebMvcConfigurer {
     @Resource
     private JwtTokenUserInterceptor jwtTokenUserInterceptor;
     @Resource
@@ -23,7 +23,8 @@ public class WebMvcConfiguration extends WebMvcConfigurationSupport {
     @Resource
     private StringToTargetTypeConverter stringToTargetTypeConverter;
 
-    protected void addInterceptors(InterceptorRegistry registry) {
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
         log.info("开始注册自定义拦截器...");
         registry.addInterceptor(jwtTokenUserInterceptor)
                 .addPathPatterns("/v1/**")
@@ -34,6 +35,7 @@ public class WebMvcConfiguration extends WebMvcConfigurationSupport {
                 .excludePathPatterns("/v1/hot/posts");
     }
 
+    @Override
     public void addFormatters(FormatterRegistry registry) {
         log.info("开始注册转换器...");
         registry.addConverter(stringToSearchTypeConverter);
