@@ -59,4 +59,10 @@ public class RedisConstants {
 
     //验证码IP限制    ip:captcha:{ip} -> count
     public static final String IP_CAPTCHA_KEY = "ip:captcha:";
+
+    //登录IP限制    ip:login:{ip} -> count
+    public static final String IP_LOGIN_KEY = "ip:login:";
+
+    //登录失败计数    login:fail:{username} -> count
+    public static final String LOGIN_FAIL_KEY = "login:fail:";
 }

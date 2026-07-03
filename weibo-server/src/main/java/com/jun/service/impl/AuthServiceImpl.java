@@ -33,11 +33,11 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import static com.jun.constant.JwtClaimsConstant.USER_ID;
-import static com.jun.constant.MessageConstant.ACCOUNT_NOT_FOUND;
-import static com.jun.constant.MessageConstant.PASSWORD_ERROR;
 import static com.jun.constant.RedisConstants.CAPTCHA_KEY;
 import static com.jun.constant.RedisConstants.CAPTCHA_TTL;
 import static com.jun.constant.RedisConstants.IP_CAPTCHA_KEY;
+import static com.jun.constant.RedisConstants.IP_LOGIN_KEY;
+import static com.jun.constant.RedisConstants.LOGIN_FAIL_KEY;
 import static com.jun.constant.RedisConstants.USER_STATS_KEY;
 import static com.jun.constant.StatusConstant.ENABLE;
 
@@ -47,6 +47,14 @@ public class AuthServiceImpl implements AuthService {
 
     private static final int IP_CAPTCHA_LIMIT = 5;
     private static final int IP_CAPTCHA_WINDOW = 120;
+
+    // 登录 IP 防刷：每 IP 每分钟最多 5 次
+    private static final int IP_LOGIN_LIMIT = 5;
+    private static final int IP_LOGIN_WINDOW = 60;
+
+    // 账号锁定：连续失败 5 次后锁定 5 分钟
+    private static final int ACCOUNT_FAIL_LIMIT = 5;
+    private static final int ACCOUNT_LOCK_WINDOW = 300;
 
     @Resource
     private AuthMapper authMapper;
@@ -63,36 +71,100 @@ public class AuthServiceImpl implements AuthService {
     public Result<UserLoginVO> login(UserLoginDTO userLoginDTO) {
         String username = userLoginDTO.getUsername();
         String password = userLoginDTO.getPassword();
+        String ip = userLoginDTO.getIpAddress();
+        String userAgent = userLoginDTO.getUserAgent();
 
+        //1. 校验验证码（在一切限流/查库之前，不消耗限流次数）
+        String captchaId = userLoginDTO.getCaptchaId();
+        String captchaCode = userLoginDTO.getCaptchaCode();
+        if (captchaId == null || captchaCode == null) {
+            return Result.error("验证码不能为空");
+        }
+        String captchaRedisKey = CAPTCHA_KEY + captchaId;
+        String storedCode = (String) redisTemplate.opsForValue().get(captchaRedisKey);
+        if (storedCode == null) {
+            return Result.error("验证码已过期，请重新获取");
+        }
+        if (!storedCode.equalsIgnoreCase(captchaCode.trim())) {
+            return Result.error("验证码错误");
+        }
+        // 验证码一次性使用，防重放
+        redisTemplate.delete(captchaRedisKey);
+
+        //2. IP 级别限流（查数据库之前拦截）
+        String ipKey = IP_LOGIN_KEY + ip;
+        Object ipCountObj = redisTemplate.opsForValue().get(ipKey);
+        int ipCount = ipCountObj != null ? Integer.parseInt(ipCountObj.toString()) : 0;
+        if (ipCount >= IP_LOGIN_LIMIT) {
+            Long remaining = redisTemplate.getExpire(ipKey, TimeUnit.SECONDS);
+            long retryAfter = remaining != null && remaining > 0 ? remaining : IP_LOGIN_WINDOW;
+            log.warn("IP登录频率超限: ip={}, count={}", ip, ipCount);
+            return Result.error("操作太频繁，请" + retryAfter + "秒后再试");
+        }
+
+        //3. 账号级别锁定检查（查数据库之前）
+        String failKey = LOGIN_FAIL_KEY + username;
+        Object failCountObj = redisTemplate.opsForValue().get(failKey);
+        int failCount = failCountObj != null ? Integer.parseInt(failCountObj.toString()) : 0;
+        if (failCount >= ACCOUNT_FAIL_LIMIT) {
+            Long remaining = redisTemplate.getExpire(failKey, TimeUnit.SECONDS);
+            long retryAfter = remaining != null && remaining > 0 ? remaining : ACCOUNT_LOCK_WINDOW;
+            log.warn("账号已被临时锁定: username={}, failCount={}", username, failCount);
+            return Result.error("账号已被临时锁定，请" + retryAfter + "秒后再试");
+        }
+
+        //4. 查找用户
         User user = authMapper.getByUsername(username);
         if (user == null) {
-            sendLoginLog(null, username, userLoginDTO.getIpAddress(),
-                    userLoginDTO.getUserAgent(), 0, "账号不存在");
-            throw new AccountNotFoundException(ACCOUNT_NOT_FOUND);
+            incrementFailCounters(ipKey, ipCount, failKey, failCount);
+            sendLoginLog(null, username, ip, userAgent, 0, "账号不存在");
+            // 统一错误消息，防止用户名枚举
+            throw new AccountNotFoundException("用户名或密码错误");
         }
 
+        //5. 验证密码
         password = DigestUtils.md5DigestAsHex(password.getBytes());
         if (!password.equals(user.getPassword())) {
-            sendLoginLog(user.getId(), username, userLoginDTO.getIpAddress(),
-                    userLoginDTO.getUserAgent(), 0, "密码错误");
-            throw new PasswordErrorException(PASSWORD_ERROR);
+            incrementFailCounters(ipKey, ipCount, failKey, failCount);
+            sendLoginLog(user.getId(), username, ip, userAgent, 0, "密码错误");
+            // 统一错误消息，防止用户名枚举
+            throw new PasswordErrorException("用户名或密码错误");
         }
 
+        //6. 检查账户状态（管理员永久锁定）
         if (!Objects.equals(user.getStatus(), ENABLE)) {
-            sendLoginLog(user.getId(), username, userLoginDTO.getIpAddress(),
-                    userLoginDTO.getUserAgent(), 0, "账号被锁定");
+            sendLoginLog(user.getId(), username, ip, userAgent, 0, "账号被锁定");
             throw new AccountLockedException(MessageConstant.ACCOUNT_LOCKED);
         }
 
+        //7. 登录成功，清除失败计数
+        redisTemplate.delete(failKey);
+
         String token = buildToken(user.getId());
-        //登录成功日志
-        sendLoginLog(user.getId(), username, userLoginDTO.getIpAddress(),
-                userLoginDTO.getUserAgent(), 1, null);
+        sendLoginLog(user.getId(), username, ip, userAgent, 1, null);
 
         UserLoginVO userLoginVO = UserLoginVO.builder()
                 .userId(user.getId().toString())
                 .token(token).build();
         return Result.success(userLoginVO);
+    }
+
+    /**
+     * 递增 IP 和账号维度的失败计数器
+     */
+    private void incrementFailCounters(String ipKey, int ipCount, String failKey, int failCount) {
+        // IP 计数
+        if (ipCount == 0) {
+            redisTemplate.opsForValue().set(ipKey, "1", IP_LOGIN_WINDOW, TimeUnit.SECONDS);
+        } else {
+            redisTemplate.opsForValue().increment(ipKey);
+        }
+        // 账号失败计数
+        if (failCount == 0) {
+            redisTemplate.opsForValue().set(failKey, "1", ACCOUNT_LOCK_WINDOW, TimeUnit.SECONDS);
+        } else {
+            redisTemplate.opsForValue().increment(failKey);
+        }
     }
 
     @Override
