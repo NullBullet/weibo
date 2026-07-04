@@ -42,6 +42,8 @@ public interface CommentsMapper {
 
     int softDeleteRepliesByParentId(@Param("parentId") Long parentId);
 
+    int softDeleteCommentsByStatusId(@Param("statusId") Long statusId);
+
     int countNonDeletedReplies(@Param("parentId") Long parentId);
 
     int decreaseStatusCommentCount(@Param("statusId") Long statusId, @Param("count") int count);

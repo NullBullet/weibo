@@ -82,6 +82,10 @@
         update comments set is_deleted = 1 where parent_id = #{parentId} and is_deleted = 0
     </update>
 
+    <update id="softDeleteCommentsByStatusId">
+        update comments set is_deleted = 1 where status_id = #{statusId} and is_deleted = 0
+    </update>
+
     <select id="countNonDeletedReplies" resultType="java.lang.Integer">
         select count(*) from comments
         where parent_id = #{parentId} and is_deleted = 0

@@ -6,6 +6,9 @@ import com.jun.vo.SaveStatusVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
+
+import java.util.List;
 
 @Mapper
 public interface StatusesMapper {
@@ -16,4 +19,13 @@ public interface StatusesMapper {
 
     @Select("select created_at from statuses where id = #{statusId}")
     SaveStatusVO getStatusById(Long statusId);
+
+    @Update("update statuses set is_deleted = 1 where id = #{statusId} and is_deleted = 0")
+    int softDeleteStatus(@Param("statusId") Long statusId);
+
+    @Select("select id, user_id from comments where status_id = #{statusId} and is_deleted = 0")
+    List<java.util.Map<String, Object>> getCommentsByStatusId(@Param("statusId") Long statusId);
+
+    @Select("select user_id from statuses where id = #{statusId}")
+    Long getUserIdByStatusId(@Param("statusId") Long statusId);
 }

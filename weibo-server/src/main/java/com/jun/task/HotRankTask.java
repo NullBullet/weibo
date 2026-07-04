@@ -38,6 +38,9 @@ public class HotRankTask {
             Map<Object, Object> entries = redisTemplate.opsForHash().entries(statsKey);
 
             if (entries == null || entries.isEmpty()) {
+                // post:stats 不存在 = 帖子已被软删除 → 从热点榜中清理
+                redisTemplate.opsForSet().remove(HOT_POST_CANDIDATE_KEY, postId);
+                redisTemplate.opsForZSet().remove(HOT_POST_ZSET_KEY, postId);
                 continue;
             }
 

@@ -142,4 +142,19 @@ public class RabbitListenerConfig {
         factory.setPrefetchCount(1);
         return factory;
     }
+
+    @Bean("deletePostFactory")
+    public SimpleRabbitListenerContainerFactory deletePostFactory(ConnectionFactory connectionFactory, MessageConverter jsonMessageConverter) {
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory);
+
+        factory.setMessageConverter(jsonMessageConverter);
+        factory.setAcknowledgeMode(AcknowledgeMode.MANUAL);
+
+        // 删除是低频操作，配置较少消费者
+        factory.setConcurrentConsumers(1);
+        factory.setMaxConcurrentConsumers(2);
+        factory.setPrefetchCount(1);
+        return factory;
+    }
 }

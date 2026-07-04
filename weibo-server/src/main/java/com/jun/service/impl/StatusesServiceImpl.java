@@ -6,6 +6,7 @@ import com.jun.dto.StatusesImageDTO;
 import com.jun.entity.Statuses;
 import com.jun.exception.StatusPublishException;
 import com.jun.mapper.StatusesMapper;
+import com.jun.mq.message.DeletePostMessage;
 import com.jun.mq.message.FeedMessage;
 import com.jun.result.Result;
 import com.jun.service.StatusesService;
@@ -91,5 +92,44 @@ public class StatusesServiceImpl implements StatusesService {
         );
 
         return Result.success(saveStatusVO);
+    }
+
+    @Override
+    public Result deleteStatus(Long statusId) {
+        Long userId = BaseContext.getCurrentId();
+        if (userId == null) {
+            return Result.error("用户未登录");
+        }
+
+        // 1. 查询帖子是否存在，校验所有权
+        Long postUserId = statusesMapper.getUserIdByStatusId(statusId);
+        if (postUserId == null) {
+            return Result.error("微博不存在");
+        }
+
+        // 2. 校验所有权：只能删自己的帖子
+        if (!postUserId.equals(userId)) {
+            return Result.error("只能删除自己的微博");
+        }
+
+        // ==================== MQ 异步处理（Redis 清理 + DB 软删）====================
+        DeletePostMessage message = DeletePostMessage.builder()
+                .messageId(UUID.randomUUID().toString())
+                .userId(userId)
+                .statusId(statusId)
+                .retryCount(0)
+                .build();
+
+        CorrelationData correlationData = new CorrelationData(message.getMessageId());
+
+        rabbitTemplate.convertAndSend(
+                RabbitMQConfig.WEIBO_TOPIC_EXCHANGE,
+                RabbitMQConfig.POST_DELETE,
+                message,
+                correlationData
+        );
+
+        log.info("微博删除请求已提交: statusId={}, userId={}", statusId, userId);
+        return Result.success();
     }
 }

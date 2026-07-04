@@ -114,6 +114,18 @@ public class RabbitMQConfig {
     //转发行为
     public static final String POST_REPOST = "post.repost";
 
+    // ======================== 删除微博队列 ========================
+
+    public static final String DELETE_QUEUE = "post.delete.queue";
+    public static final String DELETE_DLQ = "post.delete.dlq";
+    public static final String DELETE_DLX = "post.delete.dlx";
+    public static final String DELETE_DLQ_ROUTING_KEY = "post.delete.dlq";
+    public static final String DELETE_RETRY_QUEUE = "post.delete.retry.queue";
+    public static final Integer DELETE_MAX_RETRY_COUNT = 3;
+
+    //删除微博行为
+    public static final String POST_DELETE = "post.delete";
+
     @Bean
     public Queue likeQueue() {
         //durable（持久化），RabbitMQ 重启后队列不会消失
@@ -542,6 +554,54 @@ public class RabbitMQConfig {
         args.put("x-dead-letter-exchange", "");
         args.put("x-dead-letter-routing-key", REPOST_QUEUE);
         return new Queue(REPOST_RETRY_QUEUE, true, false, false, args);
+    }
+
+    // ======================== 删除微博队列 Bean ========================
+
+    @Bean
+    public Queue deleteQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-dead-letter-exchange", DELETE_DLX);
+        args.put("x-dead-letter-routing-key", DELETE_DLQ_ROUTING_KEY);
+        return new Queue(DELETE_QUEUE, true, false, false, args);
+    }
+
+    @Bean
+    public DirectExchange deleteDeadLetterExchange() {
+        return new DirectExchange(DELETE_DLX);
+    }
+
+    @Bean
+    public Queue deleteDeadLetterQueue() {
+        return new Queue(DELETE_DLQ, true);
+    }
+
+    @Bean
+    public Binding deleteDeadLetterBinding() {
+        return BindingBuilder
+                .bind(deleteDeadLetterQueue())
+                .to(deleteDeadLetterExchange())
+                .with(DELETE_DLQ_ROUTING_KEY);
+    }
+
+    @Bean
+    public Queue deleteRetryQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-message-ttl", 5000);
+        args.put("x-dead-letter-exchange", "");
+        args.put("x-dead-letter-routing-key", DELETE_QUEUE);
+        return new Queue(DELETE_RETRY_QUEUE, true, false, false, args);
+    }
+
+    /**
+     * 监听删除微博行为
+     */
+    @Bean
+    public Binding deleteBinding() {
+        return BindingBuilder
+                .bind(deleteQueue())
+                .to(weiboTopicExchange())
+                .with("post.delete");
     }
 
     /**
