@@ -190,7 +190,12 @@ public class HomeServiceImpl implements HomeService {
             String json = jsonList.get(i);
             Long id = statusIds.get(i);
             if (json != null && !json.isEmpty()) {
-                result.add(JSONUtil.toBean(json, HotStatusVO.class));
+                HotStatusVO vo = JSONUtil.toBean(json, HotStatusVO.class);
+                // 缓存中不存嵌套，读时强制重新查找原微博
+                if (vo.getOriginalStatusId() != null && vo.getOriginalStatus() != null) {
+                    vo.setOriginalStatus(null);
+                }
+                result.add(vo);
             } else {
                 missIds.add(id);
             }
@@ -209,8 +214,7 @@ public class HomeServiceImpl implements HomeService {
                     vo.setImages(imageMap.get(vo.getId()));
                 }
 
-                fillOriginalStatus(dbList, userId);
-
+                // 先回写缓存（不含 originalStatus，避免嵌套缓存过时）
                 redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
                     for (HotStatusVO vo : dbList) {
                         String key = POST_DETAIL_KEY + vo.getId();
@@ -224,7 +228,23 @@ public class HomeServiceImpl implements HomeService {
                     }
                     return null;
                 });
+
+                // 再填充原微博（仅用于本次响应，不写缓存）
+                fillOriginalStatus(dbList, userId);
                 result.addAll(dbList);
+            }
+
+            // 惰性清理：DB 未返回的 miss ID（已软删除）从 feed 中移除
+            Set<Long> dbFoundIds = dbList.stream().map(HotStatusVO::getId).collect(Collectors.toSet());
+            List<Long> deletedFeedIds = missIds.stream()
+                    .filter(id -> !dbFoundIds.contains(id))
+                    .toList();
+            if (!deletedFeedIds.isEmpty()) {
+                String feedKey = FEED_USER_KEY + userId;
+                for (Long deletedId : deletedFeedIds) {
+                    redisTemplate.opsForZSet().remove(feedKey, deletedId.toString());
+                }
+                log.info("惰性清理 feed 中已删除的帖子: userId={}, count={}", userId, deletedFeedIds.size());
             }
         }
 
@@ -292,8 +312,7 @@ public class HomeServiceImpl implements HomeService {
             finalList.add(vo);
         }
 
-        // 8. 填充原微博并回写缓存
-        fillOriginalStatus(finalList, userId);
+        // 8. 先回写缓存（不含 originalStatus，避免嵌套缓存过时）
         redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
             for (HotStatusVO vo : finalList) {
                 String cacheKey = POST_DETAIL_KEY + vo.getId();
@@ -307,6 +326,9 @@ public class HomeServiceImpl implements HomeService {
             }
             return null;
         });
+
+        // 再填充原微博（仅用于本次响应，不写缓存）
+        fillOriginalStatus(finalList, userId);
 
         // 9. 即时统计数据
         for (HotStatusVO vo : finalList) {
