@@ -8,7 +8,7 @@
     </insert>
 
     <select id="getPostById" resultType="java.lang.Long">
-        select id from statuses where id = #{statusId}
+        select id from statuses where id = #{statusId} and is_deleted = 0
     </select>
 
     <select id="getCommentById" resultType="com.jun.entity.Comment">

@@ -67,7 +67,7 @@ public class CommentsServiceImpl implements CommentsService {
 
         // 获取评论作者，用于维护作者的获赞数
         Comment comment = commentsMapper.getCommentById(commentId);
-        if (comment == null) {
+        if (comment == null || comment.getIsDeleted() == 1) {
             return Result.error("评论不存在");
         }
         Long commentOwnerId = comment.getUserId();
@@ -227,7 +227,7 @@ public class CommentsServiceImpl implements CommentsService {
         Long replyUserId = postCommentsDTO.getReplyUserId();
         if (parentId != null) {
             Comment parentComment = commentsMapper.getCommentById(parentId);
-            if (parentComment == null) {
+            if (parentComment == null || parentComment.getIsDeleted() == 1) {
                 return Result.error("父评论不存在");
             }
             if (!parentComment.getStatusId().equals(statusId)) {
