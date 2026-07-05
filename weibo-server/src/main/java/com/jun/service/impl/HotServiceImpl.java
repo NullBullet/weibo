@@ -86,7 +86,12 @@ public class HotServiceImpl implements HotService {
             Long id = statusIds.get(i);
 
             if (json!=null&&!json.isEmpty()) {
-                result.add(JSONUtil.toBean(json,HotStatusVO.class));
+                HotStatusVO vo = JSONUtil.toBean(json, HotStatusVO.class);
+                // 缓存中不存嵌套，读时强制重新查找原微博
+                if (vo.getOriginalStatusId() != null && vo.getOriginalStatus() != null) {
+                    vo.setOriginalStatus(null);
+                }
+                result.add(vo);
             } else {
                 missIds.add(id);
             }
@@ -107,10 +112,7 @@ public class HotServiceImpl implements HotService {
                 vo.setImages(imageMap.get(vo.getId()));
             }
 
-            //填充转发原微博
-            fillOriginalStatus(dbList, currentUserId);
-
-            //6. pipeline 回写缓存
+            //6. 先 pipeline 回写缓存（不含 originalStatus，避免嵌套缓存过时）
             redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
 
                 for (HotStatusVO vo : dbList) {
@@ -128,6 +130,9 @@ public class HotServiceImpl implements HotService {
                 //要求回调函数返回 null
                 return null;
             });
+
+            //再填充转发原微博（仅用于本次响应，不写缓存）
+            fillOriginalStatus(dbList, currentUserId);
             result.addAll(dbList);
         }
 
@@ -217,8 +222,7 @@ public class HotServiceImpl implements HotService {
             }
         }
 
-        //填充转发原微博并回写缓存
-        fillOriginalStatus(finalList, currentUserId);
+        // 先回写缓存（不含 originalStatus，避免嵌套缓存过时）
         redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
 
             for (HotStatusVO vo : finalList) {
@@ -240,6 +244,9 @@ public class HotServiceImpl implements HotService {
 
             return null;
         });
+
+        // 再填充转发原微博（仅用于本次响应，不写缓存）
+        fillOriginalStatus(finalList, currentUserId);
 
         //11. 获取即时统计数据（含原微博统计）
         for (HotStatusVO vo : finalList) {
