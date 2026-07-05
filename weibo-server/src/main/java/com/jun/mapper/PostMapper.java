@@ -26,14 +26,17 @@ public interface PostMapper {
     @Update("update comments set likes_count = likes_count + #{likeCount} where id = #{commentId}")
     void updateCommentLikeCount(@Param("likeCount") int likeCount, @Param("commentId") Long commentId);
 
-    @Select("select original_status_id from statuses where id = #{forwardId}")
+    @Select("select original_status_id from statuses where id = #{forwardId} and is_deleted = 0")
     Long getOriginalStatus(Long forwardId);
+
+    @Select("select id from statuses where id = #{id} and is_deleted = 0")
+    Long checkStatusExists(@Param("id") Long id);
 
     void saveForwardStatus(Statuses forwardStatus);
 
     @Update("update statuses set reposts_count = reposts_count + #{repostCount} where id = #{originalStatusId}")
     void updateStatusRepostCount(int repostCount, Long originalStatusId);
 
-    @Select("select user_id from statuses where id = #{statusId}")
+    @Select("select user_id from statuses where id = #{statusId} and is_deleted = 0")
     Long getUserIdByStatusId(@Param("statusId") Long statusId);
 }

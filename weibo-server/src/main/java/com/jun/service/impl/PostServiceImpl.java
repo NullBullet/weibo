@@ -48,10 +48,14 @@ public class PostServiceImpl implements PostService {
         Long userId = BaseContext.getCurrentId();
         toggleLikeDTO.setUserId(userId);
         Long statusId = toggleLikeDTO.getTargetId();
-        String postStatsKey = POST_STATS_KEY + statusId;
 
-        // 获取被点赞帖子的发布者，用于维护获赞数
+        // 检查帖子是否已被删除（getUserIdByStatusId 已加 is_deleted = 0 过滤）
         Long postOwnerId = postMapper.getUserIdByStatusId(statusId);
+        if (postOwnerId == null) {
+            return Result.error("该微博已被删除");
+        }
+
+        String postStatsKey = POST_STATS_KEY + statusId;
 
         if (Boolean.TRUE.equals(toggleLikeDTO.getIsLiked())) {
             Long add = redisTemplate.opsForSet().add(LIKE_POST_KEY + statusId, userId.toString());
@@ -177,11 +181,16 @@ public class PostServiceImpl implements PostService {
         Long currentId = BaseContext.getCurrentId();
         //查询被转发微博
         Long forwardId = repostDTO.getPostId();
-        //获取 OriginalStatusId
-        Long originalStatusId = null;
-        Long originalStatus = postMapper.getOriginalStatus(forwardId);
 
-        originalStatusId = (originalStatus == null) ? forwardId : originalStatus;
+        // 检查被转发微博是否存在且未被删除
+        Long exists = postMapper.checkStatusExists(forwardId);
+        if (exists == null) {
+            return Result.error("该微博已被删除");
+        }
+
+        //获取 OriginalStatusId（处理转发链）
+        Long originalStatus = postMapper.getOriginalStatus(forwardId);
+        Long originalStatusId = (originalStatus == null) ? forwardId : originalStatus;
 
         // Redis 同步：原微博 repost_count +1
         String postStatusKey = POST_STATS_KEY + originalStatusId;
