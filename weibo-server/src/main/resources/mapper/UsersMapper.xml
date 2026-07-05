@@ -20,6 +20,7 @@
                 <where>
                     <if test="q != null and q!=''">and content like concat("%",#{q},"%")</if>
                     <if test="userId!=null">and user_id = #{userId}</if>
+                    and is_deleted = 0
                 </where>
         order by created_at desc
     </select>
@@ -34,6 +35,7 @@
             <foreach collection="missIds" item="id" separator="," open="(" close=")">
                 #{id}
             </foreach>
+            and is_deleted = 0
     </select>
     <select id="getPostByIds" resultType="com.jun.vo.StatusVO">
         select s.*,u.id as "user.id",u.nickname as "user.nickname", u.avatar as "user.avatar"
@@ -42,6 +44,7 @@
         <foreach collection="originalIds" item="id" open="(" separator="," close=")">
             #{id}
         </foreach>
+        and s.is_deleted = 0
     </select>
 
     <select id="getFollowingList" resultType="com.jun.vo.FollowUserVO">

@@ -171,7 +171,12 @@ public class UsersServiceImpl implements UsersService {
             Long id = ids.get(i);
 
             if (json != null && !json.isEmpty()) {
-                result.add(JSONUtil.toBean(json, StatusVO.class));
+                StatusVO vo = JSONUtil.toBean(json, StatusVO.class);
+                // 缓存中不存嵌套，读时强制重新查找原微博
+                if (vo.getOriginalStatusId() != null && vo.getOriginalStatus() != null) {
+                    vo.setOriginalStatus(null);
+                }
+                result.add(vo);
             } else {
                 missIds.add(id);
             }
@@ -200,11 +205,8 @@ public class UsersServiceImpl implements UsersService {
                 }
             }
 
-            //填充转发原微博
-            fillOriginalStatus(dbList);
-
-            //4. pipeline 回写缓存
-            //executePipelined 的设计初衷是“只发不收”
+            //4. 先 pipeline 回写缓存（不含 originalStatus，避免嵌套缓存过时）
+            //executePipelined 的设计初衷是”只发不收”
             //RedisCallback 是为了获得对底层连接的直接控制权，从而在管道（Pipeline）模式下，
             //通过 connection.stringCommands().set(...) 这种原生方式，以最快的速度批量写入数据
             redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
@@ -224,6 +226,9 @@ public class UsersServiceImpl implements UsersService {
                 //要求回调函数返回 null
                 return null;
             });
+
+            //再填充转发原微博（仅用于本次响应，不写缓存）
+            fillOriginalStatus(dbList);
             result.addAll(dbList);
         }
 
@@ -237,8 +242,7 @@ public class UsersServiceImpl implements UsersService {
             finalList.add(map.get(id));
         }
 
-        //填充转发原微博
-        fillOriginalStatus(finalList);
+        // 先回写缓存（不含 originalStatus，避免嵌套缓存过时）
         redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
 
             for (StatusVO vo : finalList) {
@@ -260,6 +264,9 @@ public class UsersServiceImpl implements UsersService {
 
             return null;
         });
+
+        // 再填充转发原微博（仅用于本次响应，不写缓存）
+        fillOriginalStatus(finalList);
 
         //6. 获取即时点赞数
         for (StatusVO vo : finalList) {
@@ -520,9 +527,7 @@ public class UsersServiceImpl implements UsersService {
         long total = page.getTotal();
         List<StatusVO> record = page.getResult();
 
-        fillOriginalStatus(record);
-
-        //写ZSet + 写详情缓存
+        //先写ZSet + 写详情缓存（不含 originalStatus，避免嵌套缓存过时）
         redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
 
             for (StatusVO vo : record) {
@@ -550,6 +555,9 @@ public class UsersServiceImpl implements UsersService {
             }
             return null;
         });
+
+        // 再填充转发原微博（仅用于本次响应，不写缓存）
+        fillOriginalStatus(record);
 
         return Result.success(new PageResult(total, record));
     }
@@ -714,7 +722,12 @@ public class UsersServiceImpl implements UsersService {
             Long id = statusIds.get(i);
 
             if (json != null && !json.isEmpty()) {
-                result.add(JSONUtil.toBean(json, StatusVO.class));
+                StatusVO vo = JSONUtil.toBean(json, StatusVO.class);
+                // 缓存中不存嵌套，读时强制重新查找原微博
+                if (vo.getOriginalStatusId() != null && vo.getOriginalStatus() != null) {
+                    vo.setOriginalStatus(null);
+                }
+                result.add(vo);
             } else {
                 missIds.add(id);
             }
@@ -741,9 +754,7 @@ public class UsersServiceImpl implements UsersService {
                 }
             }
 
-            fillOriginalStatus(dbList);
-
-            // 回写缓存
+            // 先回写缓存（不含 originalStatus，避免嵌套缓存过时）
             redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
                 for (StatusVO vo : dbList) {
                     String key = POST_DETAIL_KEY + vo.getId();
@@ -758,6 +769,9 @@ public class UsersServiceImpl implements UsersService {
                 }
                 return null;
             });
+
+            // 再填充转发原微博（仅用于本次响应，不写缓存）
+            fillOriginalStatus(dbList);
             result.addAll(dbList);
         }
 
@@ -773,8 +787,7 @@ public class UsersServiceImpl implements UsersService {
             }
         }
 
-        //6. 填充转发原微博并回写缓存
-        fillOriginalStatus(finalList);
+        //6. 先回写缓存（不含 originalStatus，避免嵌套缓存过时）
         redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
             for (StatusVO vo : finalList) {
                 String cacheKey = POST_DETAIL_KEY + vo.getId();
@@ -789,6 +802,9 @@ public class UsersServiceImpl implements UsersService {
             }
             return null;
         });
+
+        // 再填充转发原微博（仅用于本次响应，不写缓存）
+        fillOriginalStatus(finalList);
 
         //7. 获取即时统计数据（含原微博）
         for (StatusVO vo : finalList) {
