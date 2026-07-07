@@ -7,6 +7,7 @@
         <where>
             <if test="q!=null and q!=''">and content like concat("%",#{q},"%")</if>
             <if test="startDate!=null and endDate!=null">and created_at between #{startDate} and #{endDate}</if>
+            and is_deleted = 0
         </where>
         order by created_at desc
     </select>
@@ -35,6 +36,7 @@
         <where>
             <if test="q!=null and q!=''">and content like concat("%",#{q},"%")</if>
             <if test="startDate!=null and endDate!=null">and created_at between #{startDate} and #{endDate}</if>
+            and is_deleted = 0
         </where>
         order by created_at desc limit #{page},#{pageSize}
     </select>
@@ -43,11 +45,13 @@
             <foreach collection="missIds" item="id" open="(" close=")" separator=",">
                 #{id}
             </foreach>
+            and is_deleted = 0
     </select>
     <select id="countResults" resultType="java.lang.Long">
         select count(0) from statuses
         <where>
             <if test="keyword!=null and keyword!=''">and content like concat("%",#{keyword},"%")</if>
+            and is_deleted = 0
         </where>
     </select>
     <select id="countResultsByTime" resultType="java.lang.Long">
@@ -55,6 +59,7 @@
         <where>
             <if test="keyword!=null and keyword!=''">and content like concat("%",#{keyword},"%")</if>
             <if test="startDate!=null and endDate!= null">and created_at between #{startDate} and #{endDate}</if>
+            and is_deleted = 0
         </where>
     </select>
     <select id="getComprehensiveResultIds" resultType="java.lang.Long">
@@ -62,7 +67,10 @@
         <where>
             <if test="keyword!=null and keyword!=''">and content like concat("%",#{keyword},"%")</if>
             <if test="startDate!=null and endDate!= null">and created_at between #{startDate} and #{endDate}</if>
+            and is_deleted = 0
         </where>
+        order by created_at desc
+        limit 500
     </select>
     <select id="getPostByOriginalIds" resultType="com.jun.vo.SearchStatusVO">
         select s.*,u.id as "user.id",u.nickname as "user.nickname", u.avatar as "user.avatar"
@@ -71,5 +79,6 @@
         <foreach collection="originalIds" item="id" open="(" separator="," close=")">
             #{id}
         </foreach>
+        and s.is_deleted = 0
     </select>
 </mapper>

@@ -42,125 +42,169 @@ public class SearchServiceImpl implements SearchService {
 
     @Override
     public Result comprehensionResults(SearchResultDTO searchResultDTO) {
-        //1. 缓存查询
         Long currentUserId = BaseContext.getCurrentId();
         String keyword = searchResultDTO.getQ();
         Integer page = searchResultDTO.getPage();
         Integer pageSize = searchResultDTO.getPageSize();
 
-        //默认只搜索31天
-        LocalDateTime endDate = null;
-        LocalDateTime startDate = null;
-        if (searchResultDTO.getStartDate()==null && searchResultDTO.getEndDate()==null) {
+        //默认只搜索31天，支持自定义时间区间
+        LocalDateTime startDate;
+        LocalDateTime endDate;
+        String dateSuffix;
+        if (searchResultDTO.getStartDate() != null && searchResultDTO.getEndDate() != null) {
+            // 用户传递了自定义时间区间
+            startDate = searchResultDTO.getStartDate().atStartOfDay();
+            endDate = searchResultDTO.getEndDate().atTime(java.time.LocalTime.MAX);
+            dateSuffix = startDate.toEpochSecond(ZoneOffset.UTC) + ":" + endDate.toEpochSecond(ZoneOffset.UTC);
+        } else {
+            // 默认31天
             endDate = LocalDateTime.now();
             startDate = endDate.minusDays(31);
+            dateSuffix = "default";
         }
 
-        String cacheKey = SEARCH_RESULT_COMPREHENSIVE_KEY + keyword + ":" + page + ":" + pageSize;
-        Object cacheJson = redisTemplate.opsForValue().get(cacheKey);
+        //1. ID缓存（含时间区间标识，避免不同时间范围共用缓存）
+        String idsCacheKey = SEARCH_IDS_COMPREHENSIVE_KEY + keyword + ":" + dateSuffix;
+        List<Long> allIds = null;
+        Object idsCacheJson = redisTemplate.opsForValue().get(idsCacheKey);
 
-        if (cacheJson != null) {
-            List<SearchStatusVO> cacheList;
+        if (idsCacheJson != null) {
             try {
-                cacheList = JSONUtil.parseArray(cacheJson).toList(SearchStatusVO.class);
+                allIds = JSONUtil.parseArray(idsCacheJson).toList(Long.class);
             } catch (Exception e) {
-                redisTemplate.delete(cacheKey);
-                cacheList = Collections.emptyList();
+                redisTemplate.delete(idsCacheKey);
+            }
+        }
+
+        if (allIds == null) {
+            // 缓存未命中 → 查数据库（最多500条，31天内）
+            List<Long> recallIds = searchMapper.getComprehensiveResultIds(keyword, startDate, endDate);
+
+            if (recallIds == null || recallIds.isEmpty()) {
+                redisTemplate.opsForValue().set(idsCacheKey, JSONUtil.toJsonStr(Collections.emptyList()), 60, TimeUnit.SECONDS);
+                return Result.success(new PageResult(0L, Collections.emptyList()));
             }
 
-            fillDynamicData(cacheList, currentUserId);
-            Long total = searchMapper.countResultsByTime(keyword, startDate, endDate);
-
-            return Result.success(new PageResult(total, cacheList)
+            allIds = recallIds;
+            // 写入ID缓存（30分钟）
+            redisTemplate.opsForValue().set(
+                    idsCacheKey,
+                    JSONUtil.toJsonStr(allIds),
+                    SEARCH_RESULT_TTL + new Random().nextInt(300),
+                    TimeUnit.SECONDS
             );
         }
 
-        //2. 搜索召回
-        List<Long> recallIds = searchMapper.getComprehensiveResultIds(keyword, startDate, endDate);
+        //2. 过滤已软删除的ID
+        // 批量查 post:detail 缓存，不存在的说明可能已被软删除
+        List<String> detailKeys = allIds.stream().map(id -> POST_DETAIL_KEY + id).toList();
+        List<String> detailJsonList = redisTemplate.opsForValue().multiGet(detailKeys);
 
-        if (recallIds == null || recallIds.isEmpty()) {
-            redisTemplate.opsForValue().set(cacheKey, JSONUtil.toJsonStr(Collections.emptyList()), 60, TimeUnit.SECONDS);
-            return Result.success(new PageResult(0L, Collections.emptyList()));
-        }
-
-        //3. 批量获取帖子详情缓存
-        List<String> postKeys = recallIds.stream().map(id -> POST_DETAIL_KEY + id).toList();
-        List<String> postJsonList = redisTemplate.opsForValue().multiGet(postKeys);
-        if (postJsonList == null) {
-            postJsonList = Collections.emptyList();
-        }
-
-        //4. 组装帖子详情
-        List<SearchStatusVO> posts = new ArrayList<>();
+        List<Long> validIds = new ArrayList<>();
         List<Long> missIds = new ArrayList<>();
-        for (int i = 0; i < recallIds.size(); i++) {
-            Long id = recallIds.get(i);
-            String json = i < postJsonList.size() ? postJsonList.get(i) : null;
 
-            if (json != null) {
-                posts.add(JSONUtil.toBean(json, SearchStatusVO.class));
+        for (int i = 0; i < allIds.size(); i++) {
+            Long id = allIds.get(i);
+            String json = detailJsonList != null && i < detailJsonList.size() ? detailJsonList.get(i) : null;
+            if (json != null && !json.isEmpty()) {
+                validIds.add(id);
             } else {
                 missIds.add(id);
             }
         }
 
-        //5. 缓存未命中 → 查数据库
+        // miss 的 ID 查 DB 确认哪些还存在
         if (!missIds.isEmpty()) {
-
-            List<SearchStatusVO> dbList = searchMapper.getPostByIds(missIds);
-
-            //图片
-            List<Long> ids = dbList.stream().map(SearchStatusVO::getId).toList();
-
-            List<StatusImage> images = searchMapper.getImageByIds(ids);
-
-            Map<Long, List<StatusImage>> imageMap = images.stream().collect(Collectors.groupingBy(StatusImage::getStatusId));
-
-            for (SearchStatusVO vo : dbList) {
-                vo.setImages(imageMap.get(vo.getId())
+            List<SearchStatusVO> dbResults = searchMapper.getPostByIds(missIds);
+            Set<Long> dbIdSet = dbResults.stream().map(SearchStatusVO::getId).collect(Collectors.toSet());
+            for (Long id : missIds) {
+                if (dbIdSet.contains(id)) {
+                    validIds.add(id);
+                }
+            }
+            // 有删掉的 ID → 更新缓存（去掉已删的）
+            List<Long> deletedIds = missIds.stream().filter(id -> !dbIdSet.contains(id)).toList();
+            if (!deletedIds.isEmpty()) {
+                allIds.removeAll(deletedIds);
+                redisTemplate.opsForValue().set(
+                        idsCacheKey,
+                        JSONUtil.toJsonStr(allIds),
+                        SEARCH_RESULT_TTL + new Random().nextInt(300),
+                        TimeUnit.SECONDS
                 );
             }
+        }
 
-            //填充转发原微博
-            fillOriginalStatus(dbList, currentUserId);
+        if (validIds.isEmpty()) {
+            return Result.success(new PageResult(0L, Collections.emptyList()));
+        }
 
-            //回写Redis
+        //3. 获取帖子详情
+        List<String> allDetailKeys = validIds.stream().map(id -> POST_DETAIL_KEY + id).toList();
+        List<String> allDetailJsonList = redisTemplate.opsForValue().multiGet(allDetailKeys);
+
+        List<SearchStatusVO> posts = new ArrayList<>();
+        List<Long> detailMissIds = new ArrayList<>();
+        // 刚才 miss->DB 查到的 ID（没有 post:detail 缓存，需要单独补）
+        Set<Long> missButFound = new HashSet<>(missIds);
+        missButFound.retainAll(validIds);
+
+        for (int i = 0; i < validIds.size(); i++) {
+            Long id = validIds.get(i);
+            String json = allDetailJsonList != null && i < allDetailJsonList.size() ? allDetailJsonList.get(i) : null;
+
+            if (json != null && !json.isEmpty() && !missButFound.contains(id)) {
+                SearchStatusVO vo = JSONUtil.toBean(json, SearchStatusVO.class);
+                if (vo.getOriginalStatusId() != null && vo.getOriginalStatus() != null) {
+                    vo.setOriginalStatus(null);
+                }
+                posts.add(vo);
+            } else {
+                detailMissIds.add(id);
+            }
+        }
+
+        // 查 DB 补详情
+        if (!detailMissIds.isEmpty()) {
+            List<SearchStatusVO> dbList = searchMapper.getPostByIds(detailMissIds);
+            List<Long> dbIdList = dbList.stream().map(SearchStatusVO::getId).toList();
+            List<StatusImage> images = searchMapper.getImageByIds(dbIdList);
+            Map<Long, List<StatusImage>> imageMap = images.stream()
+                    .collect(Collectors.groupingBy(StatusImage::getStatusId));
+
+            for (SearchStatusVO vo : dbList) {
+                vo.setImages(imageMap.get(vo.getId()));
+            }
+
+            // 回写缓存
             redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-
                 for (SearchStatusVO vo : dbList) {
-
                     String key = POST_DETAIL_KEY + vo.getId();
                     String value = JSONUtil.toJsonStr(vo);
                     long expire = POST_DETAIL_TTL + new Random().nextInt(300);
-
                     connection.stringCommands().set(
-                            key.getBytes(),
-                            value.getBytes(),
+                            key.getBytes(), value.getBytes(),
                             Expiration.seconds(expire),
                             RedisStringCommands.SetOption.UPSERT
                     );
                 }
-
                 return null;
             });
+
             posts.addAll(dbList);
+            fillOriginalStatus(dbList, currentUserId);
         }
 
-        //6. 动态数据填充    点赞数 / 评论数 / 浏览数
+        //4. 计算综合排序分
         fillDynamicData(posts, currentUserId);
 
-        //7. 计算综合排序分
         List<ScoredPost> scoredPosts = new ArrayList<>();
         for (SearchStatusVO vo : posts) {
-
-            //7.1 关键词相关性
             double keywordScore = 0;
             String content = vo.getContent();
             if (content != null && content.contains(keyword)) {
                 keywordScore += 5;
             }
-
-            //关键词出现次数
             int count = 0;
             int index = 0;
             if (content != null) {
@@ -169,194 +213,69 @@ public class SearchServiceImpl implements SearchService {
                     index += keyword.length();
                 }
             }
-
             keywordScore += Math.log(count + 1) * 3;
 
-            //7.2 时间权重
             long hours = ChronoUnit.HOURS.between(vo.getCreatedAt(), LocalDateTime.now());
             double timeScore = 1.0 / Math.pow(hours + 2, 0.3);
 
-            //7.3 热度分
-            Double hotScore = HotScoreCalculator.calculateSearchHotScore(
-                    vo.getViewsCount(),
-                    vo.getAttitudesCount(),
-                    vo.getCommentsCount(),
-                    vo.getRepostsCount()
-            );
+            double hotScore = HotScoreCalculator.calculateSearchHotScore(
+                    vo.getViewsCount(), vo.getAttitudesCount(),
+                    vo.getCommentsCount(), vo.getRepostsCount());
 
-            //7.4 最终综合分
             double finalScore = keywordScore * 0.6 + timeScore * 10 * 0.25 + hotScore * 0.15;
-
-            scoredPosts.add(new ScoredPost(vo, finalScore)
-            );
+            scoredPosts.add(new ScoredPost(vo, finalScore));
         }
 
-        //8. 全局排序
         scoredPosts.sort((a, b) -> Double.compare(b.getFinalScore(), a.getFinalScore()));
 
-        //9. 应用层分页
+        //5. 分页
         int start = (page - 1) * pageSize;
-
         int end = Math.min(start + pageSize, scoredPosts.size());
+        List<SearchStatusVO> result = scoredPosts.subList(start, end).stream()
+                .map(ScoredPost::getPost).toList();
 
-        List<ScoredPost> pageList = scoredPosts.subList(start, end);
-
-        //10. 提取VO
-        List<SearchStatusVO> result = pageList.stream().map(ScoredPost::getPost).toList();
-
-        //11. 用户信息组装
+        //6. 用户信息
         List<Long> userIds = result.stream().map(SearchStatusVO::getUserId).distinct().toList();
-
         List<UserVO> users = searchMapper.getUsersInfoByUserIds(userIds);
-
         Map<Long, UserVO> userMap = users.stream().collect(Collectors.toMap(UserVO::getId, v -> v));
-
         for (SearchStatusVO vo : result) {
             vo.setUser(userMap.get(vo.getUserId()));
         }
 
-        //填充转发原微博并回写缓存
+        // 填充转发原微博（仅用于本次响应）
         fillOriginalStatus(result, currentUserId);
-        redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
 
-            for (SearchStatusVO vo : result) {
-
-                String detailKey = POST_DETAIL_KEY + vo.getId();
-
-                String cacheValue = JSONUtil.toJsonStr(vo);
-
-                long expireTime = POST_DETAIL_TTL + new Random().nextInt(300);
-
-                connection.stringCommands().set(
-                        cacheKey.getBytes(),
-                        cacheValue.getBytes(),
-                        Expiration.seconds(expireTime),
-                        RedisStringCommands.SetOption.UPSERT
-                );
-            }
-
-            return null;
-        });
-
-        //12. 写入搜索缓存
-        redisTemplate.opsForValue().set(
-                cacheKey,
-                JSONUtil.toJsonStr(result),
-                SEARCH_RESULT_TTL + new Random().nextInt(300),
-                TimeUnit.SECONDS
-        );
-
-        //13. 返回结果
-        return Result.success(new PageResult(scoredPosts.size(), result));
+        //total 取 allIds.size()（过滤前的总数）
+        return Result.success(new PageResult((long) allIds.size(), result));
     }
 
     @Override
     public Result realtimeResults(SearchResultDTO searchResultDTO) {
         Long userId = BaseContext.getCurrentId();
 
-        //1. 缓存查询
+        //1. 数据库分页查询 ids（直接 DB 分页，不做搜索缓存）
         String keyword = searchResultDTO.getQ();
         Integer page = searchResultDTO.getPage();
         Integer pageSize = searchResultDTO.getPageSize();
-        String searchKey = SEARCH_RESULT_REALTIME_KEY + keyword + ":" + page + ":" + pageSize;
-        Object searchJson = redisTemplate.opsForValue().get(searchKey);
-        if (searchJson != null) {
-            List<SearchStatusVO> bean;
 
-            try {
-                bean = JSONUtil.parseArray(searchJson).toList(SearchStatusVO.class);
-            } catch (Exception e) {
-                //防止脏缓存
-                redisTemplate.delete(searchKey);
-                bean = Collections.emptyList();
-            }
-
-            if (bean.isEmpty()) {
-                return Result.success(new PageResult(0L, bean));
-            }
-            fillDynamicData(bean, userId);
-
-            Long total = searchMapper.countResults(keyword);
-            return Result.success(new PageResult(total,bean));
-        }
-
-        //2. 数据库查询 ids
         searchResultDTO.setPage((page - 1) * pageSize);
         List<Long> statusIds = searchMapper.getResultIds(searchResultDTO);
         if (statusIds.isEmpty()) {
-            //无关键字相关的帖子
-            redisTemplate.opsForValue().set(
-                    searchKey,
-                    JSONUtil.toJsonStr(Collections.emptyList()),
-                    60, // 空值缓存时间短一点，防止词库更新延迟
-                    TimeUnit.SECONDS
-            );
-            return Result.success(new PageResult(0L, Collections.emptyList()));
+            Long total = searchMapper.countResults(keyword);
+            return Result.success(new PageResult(total, Collections.emptyList()));
         }
 
-        //3. 帖子详情组装
-        List<String> idsKey = statusIds.stream().map(id -> POST_DETAIL_KEY + id).toList();
-        List<String> jsonList = redisTemplate.opsForValue().multiGet(idsKey);
-        if (jsonList == null) {
-            jsonList = Collections.emptyList();
+        //2. 批量获取帖子详情（旁路缓存策略：multiGet post:detail → DB fallback）
+        List<SearchStatusVO> posts = fetchPostDetails(statusIds, userId);
+
+        if (posts.isEmpty()) {
+            Long total = searchMapper.countResults(keyword);
+            return Result.success(new PageResult(total, Collections.emptyList()));
         }
 
-        List<SearchStatusVO> result = new ArrayList<>();
-        List<Long> missIds = new ArrayList<>();
-
-        for (int i = 0; i < statusIds.size(); i++) {
-
-            String json = jsonList.get(i);
-            Long id = statusIds.get(i);
-
-            if (json != null) {
-                result.add(JSONUtil.toBean(json, SearchStatusVO.class));
-            } else {
-                missIds.add(id);
-            }
-        }
-        if (!missIds.isEmpty()) {
-            List<SearchStatusVO> dbList = searchMapper.getPostByIds(missIds);
-
-            List<Long> missIdList = dbList.stream().map(SearchStatusVO::getId).toList();
-            List<StatusImage> images = searchMapper.getImageByIds(missIdList);
-
-            Map<Long, List<StatusImage>> imageMap = images.stream()
-                    .collect(Collectors.groupingBy(StatusImage::getStatusId));
-
-            for (SearchStatusVO vo : dbList) {
-                vo.setImages(imageMap.get(vo.getId()));
-            }
-
-            //填充转发原微博
-            fillOriginalStatus(dbList, userId);
-
-            redisTemplate.executePipelined((RedisCallback<Object>) connection ->{
-
-                for (SearchStatusVO searchStatusVO : dbList) {
-
-                    String key = POST_DETAIL_KEY + searchStatusVO.getId();
-                    String value = JSONUtil.toJsonStr(searchStatusVO);
-
-                    Long expire = POST_DETAIL_TTL + new Random().nextInt(300);
-                    connection.stringCommands().set(
-                            key.getBytes(),
-                            value.getBytes(),
-                            Expiration.seconds(expire),
-                            RedisStringCommands.SetOption.UPSERT
-                    );
-                }
-                return null;
-            });
-            result.addAll(dbList);
-        }
-
-        Map<Long, SearchStatusVO> map = result.stream().collect(Collectors.toMap(SearchStatusVO::getId, v -> v));
-
-
-        //4. 用户信息组装
-        List<Long> userIdList = statusIds.stream()
-                .map(id -> map.get(id).getUserId())
+        //3. 用户信息组装
+        List<Long> userIdList = posts.stream()
+                .map(SearchStatusVO::getUserId)
                 .distinct()
                 .toList();
 
@@ -371,7 +290,6 @@ public class SearchServiceImpl implements SearchService {
         for (int i = 0; i < userIdList.size(); i++) {
             Long uid = userIdList.get(i);
             String json = (userJsonList != null) ? userJsonList.get(i) : null;
-
             if (json != null && !json.isEmpty()) {
                 userMap.put(uid, JSONUtil.toBean(json, UserVO.class));
             } else {
@@ -380,24 +298,17 @@ public class SearchServiceImpl implements SearchService {
         }
 
         if (!missUserIds.isEmpty()) {
-
             List<UserVO> dbUsers = searchMapper.getUsersInfoByUserIds(missUserIds);
-
             for (UserVO user : dbUsers) {
                 userMap.put(user.getId(), user);
             }
-
             redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-
                 for (UserVO user : dbUsers) {
                     String key = USER_INFO_KEY + user.getId();
                     String value = JSONUtil.toJsonStr(user);
-
                     long expire = USER_INFO_TTL + new Random().nextInt(3600);
-
                     connection.stringCommands().set(
-                            key.getBytes(),
-                            value.getBytes(),
+                            key.getBytes(), value.getBytes(),
                             Expiration.seconds(expire),
                             RedisStringCommands.SetOption.UPSERT
                     );
@@ -405,51 +316,34 @@ public class SearchServiceImpl implements SearchService {
                 return null;
             });
         }
-        List<SearchStatusVO> finalList = new ArrayList<>();
-        for (Long statusId : statusIds) {
-            SearchStatusVO vo = map.get(statusId);
 
-            if (vo == null) continue;
-
+        for (SearchStatusVO vo : posts) {
             vo.setUser(userMap.get(vo.getUserId()));
-
-            finalList.add(vo);
         }
-        //5. 动态数据填充
-        fillDynamicData(finalList, userId);
 
-        //填充转发原微博并回写缓存
-        fillOriginalStatus(finalList, userId);
+        //4. 动态数据填充（实时点赞数/评论数/转发数）
+        fillDynamicData(posts, userId);
+
+        //5. 回写 post:detail 缓存（不含 originalStatus）
         redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-
-            for (SearchStatusVO vo : finalList) {
-
+            for (SearchStatusVO vo : posts) {
                 String cacheKey = POST_DETAIL_KEY + vo.getId();
-
                 String cacheValue = JSONUtil.toJsonStr(vo);
-
                 long expireTime = POST_DETAIL_TTL + new Random().nextInt(300);
-
                 connection.stringCommands().set(
-                        cacheKey.getBytes(),
-                        cacheValue.getBytes(),
+                        cacheKey.getBytes(), cacheValue.getBytes(),
                         Expiration.seconds(expireTime),
                         RedisStringCommands.SetOption.UPSERT
                 );
             }
-
             return null;
         });
 
-        //6. 缓存写入与返回
-        redisTemplate.opsForValue().set(
-                searchKey,
-                JSONUtil.toJsonStr(finalList),
-                SEARCH_RESULT_TTL + new Random().nextInt(300),
-                TimeUnit.SECONDS
-        );
+        //6. 填充转发原微博（仅用于本次响应）
+        fillOriginalStatus(posts, userId);
+
         Long total = searchMapper.countResults(keyword);
-        return Result.success(new PageResult(total,finalList));
+        return Result.success(new PageResult(total, posts));
     }
 
     private void fillDynamicData(List<SearchStatusVO> list, Long userId) {
@@ -518,6 +412,68 @@ public class SearchServiceImpl implements SearchService {
         vo.setCommentsCount(commentObj == null ? 0 : Integer.parseInt(commentObj.toString()));
         vo.setRepostsCount(forwardObj == null ? 0 : Integer.parseInt(forwardObj.toString()));
         vo.setViewsCount(viewObj == null ? 0 : Integer.parseInt(viewObj.toString()));
+    }
+
+    /**
+     * 批量获取帖子详情（缓存 → DB fallback）
+     */
+    private List<SearchStatusVO> fetchPostDetails(List<Long> statusIds, Long currentUserId) {
+        if (statusIds == null || statusIds.isEmpty()) return Collections.emptyList();
+
+        List<String> detailKeys = statusIds.stream().map(id -> POST_DETAIL_KEY + id).toList();
+        List<String> jsonList = redisTemplate.opsForValue().multiGet(detailKeys);
+
+        List<SearchStatusVO> posts = new ArrayList<>();
+        List<Long> missIds = new ArrayList<>();
+
+        for (int i = 0; i < statusIds.size(); i++) {
+            String json = jsonList != null && i < jsonList.size() ? jsonList.get(i) : null;
+            Long id = statusIds.get(i);
+
+            if (json != null && !json.isEmpty()) {
+                SearchStatusVO vo = JSONUtil.toBean(json, SearchStatusVO.class);
+                if (vo.getOriginalStatusId() != null && vo.getOriginalStatus() != null) {
+                    vo.setOriginalStatus(null);
+                }
+                posts.add(vo);
+            } else {
+                missIds.add(id);
+            }
+        }
+
+        if (!missIds.isEmpty()) {
+            List<SearchStatusVO> dbList = searchMapper.getPostByIds(missIds);
+            if (!dbList.isEmpty()) {
+                List<Long> dbIdList = dbList.stream().map(SearchStatusVO::getId).toList();
+                List<StatusImage> images = searchMapper.getImageByIds(dbIdList);
+                Map<Long, List<StatusImage>> imageMap = images.stream()
+                        .collect(Collectors.groupingBy(StatusImage::getStatusId));
+
+                for (SearchStatusVO vo : dbList) {
+                    vo.setImages(imageMap.get(vo.getId()));
+                }
+
+                // 回写 post:detail 缓存
+                redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+                    for (SearchStatusVO vo : dbList) {
+                        String key = POST_DETAIL_KEY + vo.getId();
+                        String value = JSONUtil.toJsonStr(vo);
+                        long expire = POST_DETAIL_TTL + new Random().nextInt(300);
+                        connection.stringCommands().set(
+                                key.getBytes(), value.getBytes(),
+                                Expiration.seconds(expire),
+                                RedisStringCommands.SetOption.UPSERT
+                        );
+                    }
+                    return null;
+                });
+
+                posts.addAll(dbList);
+                fillOriginalStatus(dbList, currentUserId);
+            }
+        }
+
+        return posts;
     }
 
     @Override

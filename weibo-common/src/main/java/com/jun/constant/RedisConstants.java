@@ -30,7 +30,8 @@ public class RedisConstants {
 
     //搜索缓存
     public static final String SEARCH_RESULT_REALTIME_KEY = "search:result:realtime:";
-    public static final String SEARCH_RESULT_COMPREHENSIVE_KEY = "search:result:comprehensive:";
+    //综合搜索结果ID缓存    search:ids:comprehensive:{keyword} -> List<Long>
+    public static final String SEARCH_IDS_COMPREHENSIVE_KEY = "search:ids:comprehensive:";
     public static final Long SEARCH_RESULT_TTL = 1800L;
 
     //一级评论列表    post:comment:list:{postId}:{page}:{pageSize}
