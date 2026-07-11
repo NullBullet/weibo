@@ -225,14 +225,22 @@ public class RabbitMQConfig {
     }
 
     /**
-     * 监听所有帖子行为
+     * 监听帖子点赞行为（精确匹配）
      */
     @Bean
-    public Binding postBinding() {
+    public Binding postLikeBinding() {
         return BindingBuilder
                 .bind(likeQueue())
                 .to(weiboTopicExchange())
-                .with("post.*");
+                .with("post.like");
+    }
+
+    @Bean
+    public Binding postCancelBinding() {
+        return BindingBuilder
+                .bind(likeQueue())
+                .to(weiboTopicExchange())
+                .with("post.cancel");
     }
 
     // ======================== 通知队列 Bean ========================

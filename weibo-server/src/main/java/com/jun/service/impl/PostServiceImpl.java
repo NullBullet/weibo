@@ -175,7 +175,6 @@ public class PostServiceImpl implements PostService {
         return Result.success(toggleLikeVO);
     }
 
-    @Transactional
     @Override
     public Result repost(RepostDTO repostDTO) {
         Long currentId = BaseContext.getCurrentId();
