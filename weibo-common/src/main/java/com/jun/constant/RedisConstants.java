@@ -66,4 +66,9 @@ public class RedisConstants {
 
     //登录失败计数    login:fail:{username} -> count
     public static final String LOGIN_FAIL_KEY = "login:fail:";
+
+    //抽奖活动：statusId -> activityId 映射
+    public static final String REWARD_ACTIVITY_STATUS_KEY = "reward:activity:status:";
+    //抽奖活动信息：activityId -> Hash {activityType, status, fanOnly, creatorId}
+    public static final String REWARD_ACTIVITY_INFO_KEY = "reward:activity:info:";
 }

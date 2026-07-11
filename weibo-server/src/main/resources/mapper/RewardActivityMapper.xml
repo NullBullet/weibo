@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.jun.mapper.RewardActivityMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        insert into reward_activity (id, status_id, creator_id, activity_type,
+                                     reward_name, reward_desc, fan_only,
+                                     participant_limit, winner_count,
+                                     start_time, end_time,
+                                     status, participant_count, drawn, create_time)
+        values (#{id}, #{statusId}, #{creatorId}, #{activityType},
+                #{rewardName}, #{rewardDesc}, #{fanOnly},
+                #{participantLimit}, #{winnerCount},
+                #{startTime}, #{endTime},
+                #{status}, #{participantCount}, #{drawn}, #{createTime})
+    </insert>
+
+    <select id="getById" resultType="RewardActivity">
+        select * from reward_activity where id = #{id}
+    </select>
+
+    <select id="getByStatusId" resultType="RewardActivity">
+        select * from reward_activity where status_id = #{statusId}
+    </select>
+
+    <update id="updateStatus">
+        update reward_activity set status = #{status} where id = #{id}
+    </update>
+
+    <update id="updateParticipantCount">
+        update reward_activity set participant_count = #{count} where id = #{id}
+    </update>
+
+    <update id="markActivityDrawn">
+        update reward_activity set drawn = 1 where id = #{id}
+    </update>
+
+    <select id="getParticipantUserIds" resultType="java.lang.Long">
+        select user_id from reward_record
+        where activity_id = #{activityId}
+        order by id asc
+    </select>
+
+    <select id="countParticipants" resultType="java.lang.Integer">
+        select count(1) from reward_record where activity_id = #{activityId}
+    </select>
+
+    <select id="getParticipantPage" resultType="com.jun.vo.ParticipantVO">
+        select
+            rr.user_id as userId,
+            u.nickname,
+            u.avatar,
+            date_format(rr.create_time, '%Y-%m-%d %H:%i:%s') as joinTime
+        from reward_record rr
+        join users u on rr.user_id = u.id
+        where rr.activity_id = #{activityId}
+        order by rr.id asc
+        limit #{offset}, #{pageSize}
+    </select>
+
+    <select id="getWinners" resultType="com.jun.vo.WinnerVO">
+        select
+            rr.user_id as userId,
+            u.nickname,
+            u.avatar
+        from reward_record rr
+        join users u on rr.user_id = u.id
+        where rr.activity_id = #{activityId} and rr.status = 1
+    </select>
+
+    <select id="getRecordsByUserId" resultType="com.jun.vo.RewardRecordVO">
+        select
+            rr.id,
+            rr.activity_id as activityId,
+            rr.user_id as userId,
+            rr.status,
+            ra.reward_name as rewardName,
+            ra.reward_desc as rewardDesc,
+            ra.status as activityStatus,
+            date_format(rr.win_time, '%Y-%m-%d %H:%i:%s') as winTime,
+            date_format(rr.create_time, '%Y-%m-%d %H:%i:%s') as createTime
+        from reward_record rr
+        join reward_activity ra on rr.activity_id = ra.id
+        where rr.user_id = #{userId}
+        order by rr.id desc
+        limit #{offset}, #{pageSize}
+    </select>
+
+    <select id="countRecordsByUserId" resultType="java.lang.Integer">
+        select count(1) from reward_record where user_id = #{userId}
+    </select>
+
+    <select id="getWonRecordsByUserId" resultType="com.jun.vo.RewardRecordVO">
+        select
+            rr.id,
+            rr.activity_id as activityId,
+            rr.user_id as userId,
+            rr.status,
+            ra.reward_name as rewardName,
+            ra.reward_desc as rewardDesc,
+            ra.status as activityStatus,
+            date_format(rr.win_time, '%Y-%m-%d %H:%i:%s') as winTime,
+            date_format(rr.create_time, '%Y-%m-%d %H:%i:%s') as createTime
+        from reward_record rr
+        join reward_activity ra on rr.activity_id = ra.id
+        where rr.user_id = #{userId} and rr.status >= 1
+        order by rr.id desc
+        limit #{offset}, #{pageSize}
+    </select>
+
+    <select id="countWonRecordsByUserId" resultType="java.lang.Integer">
+        select count(1) from reward_record where user_id = #{userId} and status >= 1
+    </select>
+
+    <select id="getActivityTypeById" resultType="java.lang.Integer">
+        select activity_type from reward_activity where id = #{id}
+    </select>
+
+    <!-- 查询需要开奖的活动：已结束 或 endTime 已过（两种模式均适用） -->
+    <select id="getActivitiesToDraw" resultType="RewardActivity">
+        select * from reward_activity
+        where drawn = 0
+          and (status = 2
+               or (end_time is not null and end_time &lt; now()))
+    </select>
+
+    <select id="getParticipantLimitById" resultType="java.lang.Integer">
+        select participant_limit from reward_activity where id = #{id}
+    </select>
+
+    <insert id="insertWinNotification">
+        insert into reward_notification (user_id, activity_id, content, create_time)
+        values (#{userId}, #{activityId}, #{content}, now())
+    </insert>
+
+    <!-- 批量按 statusId 查询活动（用于 VO 扩展信息填充，避免 N+1） -->
+    <select id="getByStatusIds" resultType="RewardActivity">
+        select id, status_id, activity_type from reward_activity
+        where status_id in
+        <foreach collection="statusIds" item="statusId" open="(" separator="," close=")">
+            #{statusId}
+        </foreach>
+    </select>
+
+</mapper>
