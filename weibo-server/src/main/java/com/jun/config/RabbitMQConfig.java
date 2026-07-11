@@ -126,6 +126,29 @@ public class RabbitMQConfig {
     //删除微博行为
     public static final String POST_DELETE = "post.delete";
 
+    // ======================== 奖励活动队列 ========================
+
+    public static final String REWARD_JOIN_QUEUE = "reward.join.queue";
+    public static final String REWARD_JOIN_DLQ = "reward.join.dlq";
+    public static final String REWARD_JOIN_DLX = "reward.join.dlx";
+    public static final String REWARD_JOIN_DLQ_ROUTING_KEY = "reward.join.dlq";
+    public static final String REWARD_JOIN_RETRY_QUEUE = "reward.join.retry.queue";
+    public static final Integer REWARD_MAX_RETRY_COUNT = 3;
+
+    //奖励参与行为
+    public static final String POST_REWARD_JOIN = "reward.join";
+
+    // ======================== 中奖通知队列 ========================
+
+    public static final String REWARD_WIN_QUEUE = "reward.win.queue";
+    public static final String REWARD_WIN_DLQ = "reward.win.dlq";
+    public static final String REWARD_WIN_DLX = "reward.win.dlx";
+    public static final String REWARD_WIN_DLQ_ROUTING_KEY = "reward.win.dlq";
+    public static final String REWARD_WIN_RETRY_QUEUE = "reward.win.retry.queue";
+
+    //中奖通知行为
+    public static final String POST_REWARD_WIN = "reward.win";
+
     @Bean
     public Queue likeQueue() {
         //durable（持久化），RabbitMQ 重启后队列不会消失
@@ -602,6 +625,102 @@ public class RabbitMQConfig {
                 .bind(deleteQueue())
                 .to(weiboTopicExchange())
                 .with("post.delete");
+    }
+
+    // ======================== 奖励活动队列 ========================
+
+    /**
+     * 监听奖励参与行为
+     */
+    @Bean
+    public Binding rewardJoinBinding() {
+        return BindingBuilder
+                .bind(rewardJoinQueue())
+                .to(weiboTopicExchange())
+                .with("reward.join");
+    }
+
+    @Bean
+    public Queue rewardJoinQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-dead-letter-exchange", REWARD_JOIN_DLX);
+        args.put("x-dead-letter-routing-key", REWARD_JOIN_DLQ_ROUTING_KEY);
+        return new Queue(REWARD_JOIN_QUEUE, true, false, false, args);
+    }
+
+    @Bean
+    public DirectExchange rewardJoinDeadLetterExchange() {
+        return new DirectExchange(REWARD_JOIN_DLX);
+    }
+
+    @Bean
+    public Queue rewardJoinDeadLetterQueue() {
+        return new Queue(REWARD_JOIN_DLQ, true);
+    }
+
+    @Bean
+    public Binding rewardJoinDeadLetterBinding() {
+        return BindingBuilder
+                .bind(rewardJoinDeadLetterQueue())
+                .to(rewardJoinDeadLetterExchange())
+                .with(REWARD_JOIN_DLQ_ROUTING_KEY);
+    }
+
+    @Bean
+    public Queue rewardJoinRetryQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-message-ttl", 5000);
+        args.put("x-dead-letter-exchange", "");
+        args.put("x-dead-letter-routing-key", REWARD_JOIN_QUEUE);
+        return new Queue(REWARD_JOIN_RETRY_QUEUE, true, false, false, args);
+    }
+
+    // ======================== 中奖通知队列 ========================
+
+    /**
+     * 监听中奖通知行为
+     */
+    @Bean
+    public Binding rewardWinBinding() {
+        return BindingBuilder
+                .bind(rewardWinQueue())
+                .to(weiboTopicExchange())
+                .with("reward.win");
+    }
+
+    @Bean
+    public Queue rewardWinQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-dead-letter-exchange", REWARD_WIN_DLX);
+        args.put("x-dead-letter-routing-key", REWARD_WIN_DLQ_ROUTING_KEY);
+        return new Queue(REWARD_WIN_QUEUE, true, false, false, args);
+    }
+
+    @Bean
+    public DirectExchange rewardWinDeadLetterExchange() {
+        return new DirectExchange(REWARD_WIN_DLX);
+    }
+
+    @Bean
+    public Queue rewardWinDeadLetterQueue() {
+        return new Queue(REWARD_WIN_DLQ, true);
+    }
+
+    @Bean
+    public Binding rewardWinDeadLetterBinding() {
+        return BindingBuilder
+                .bind(rewardWinDeadLetterQueue())
+                .to(rewardWinDeadLetterExchange())
+                .with(REWARD_WIN_DLQ_ROUTING_KEY);
+    }
+
+    @Bean
+    public Queue rewardWinRetryQueue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("x-message-ttl", 5000);
+        args.put("x-dead-letter-exchange", "");
+        args.put("x-dead-letter-routing-key", REWARD_WIN_QUEUE);
+        return new Queue(REWARD_WIN_RETRY_QUEUE, true, false, false, args);
     }
 
     /**

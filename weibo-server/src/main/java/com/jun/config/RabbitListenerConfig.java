@@ -157,4 +157,34 @@ public class RabbitListenerConfig {
         factory.setPrefetchCount(1);
         return factory;
     }
+
+    @Bean("rewardJoinFactory")
+    public SimpleRabbitListenerContainerFactory rewardJoinFactory(ConnectionFactory connectionFactory, MessageConverter jsonMessageConverter) {
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory);
+
+        factory.setMessageConverter(jsonMessageConverter);
+        factory.setAcknowledgeMode(AcknowledgeMode.MANUAL);
+
+        // 奖励参与涉及高并发，配置较多消费者
+        factory.setConcurrentConsumers(2);
+        factory.setMaxConcurrentConsumers(5);
+        factory.setPrefetchCount(1);
+        return factory;
+    }
+
+    @Bean("rewardWinFactory")
+    public SimpleRabbitListenerContainerFactory rewardWinFactory(ConnectionFactory connectionFactory, MessageConverter jsonMessageConverter) {
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory);
+
+        factory.setMessageConverter(jsonMessageConverter);
+        factory.setAcknowledgeMode(AcknowledgeMode.MANUAL);
+
+        // 中奖通知是低频操作，配置较少消费者
+        factory.setConcurrentConsumers(1);
+        factory.setMaxConcurrentConsumers(2);
+        factory.setPrefetchCount(1);
+        return factory;
+    }
 }
