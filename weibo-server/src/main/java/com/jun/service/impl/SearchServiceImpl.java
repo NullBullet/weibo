@@ -13,6 +13,7 @@ import com.jun.model.ScoredPost;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.service.SearchService;
+import com.jun.service.RewardService;
 import com.jun.utils.HotScoreCalculator;
 import com.jun.vo.*;
 import jakarta.annotation.Resource;
@@ -39,6 +40,8 @@ public class SearchServiceImpl implements SearchService {
     private SearchMapper searchMapper;
     @Resource
     private RedisTemplate redisTemplate;
+    @Resource
+    private RewardService rewardService;
 
     @Override
     public Result comprehensionResults(SearchResultDTO searchResultDTO) {
@@ -245,6 +248,13 @@ public class SearchServiceImpl implements SearchService {
         // 填充转发原微博（仅用于本次响应）
         fillOriginalStatus(result, currentUserId);
 
+        // 填充扩展信息（抽奖活动等）
+        List<Long> allStatusIds = result.stream().map(SearchStatusVO::getId).toList();
+        Map<Long, List<ExtensionVO>> extMap = rewardService.getExtensionsByStatusIds(allStatusIds);
+        for (SearchStatusVO vo : result) {
+            vo.setExtensions(extMap.getOrDefault(vo.getId(), Collections.emptyList()));
+        }
+
         //total 取 allIds.size()（过滤前的总数）
         return Result.success(new PageResult((long) allIds.size(), result));
     }
@@ -341,6 +351,13 @@ public class SearchServiceImpl implements SearchService {
 
         //6. 填充转发原微博（仅用于本次响应）
         fillOriginalStatus(posts, userId);
+
+        // 填充扩展信息（抽奖活动等）
+        List<Long> allStatusIds = posts.stream().map(SearchStatusVO::getId).toList();
+        Map<Long, List<ExtensionVO>> extMap = rewardService.getExtensionsByStatusIds(allStatusIds);
+        for (SearchStatusVO vo : posts) {
+            vo.setExtensions(extMap.getOrDefault(vo.getId(), Collections.emptyList()));
+        }
 
         Long total = searchMapper.countResults(keyword);
         return Result.success(new PageResult(total, posts));

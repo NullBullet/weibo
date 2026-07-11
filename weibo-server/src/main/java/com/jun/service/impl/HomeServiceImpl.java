@@ -9,6 +9,8 @@ import com.jun.mapper.HotMapper;
 import com.jun.result.Result;
 import com.jun.result.ScrollResult;
 import com.jun.service.HomeService;
+import com.jun.service.RewardService;
+import com.jun.vo.ExtensionVO;
 import com.jun.vo.HotStatusVO;
 import com.jun.vo.UserVO;
 import jakarta.annotation.Resource;
@@ -37,6 +39,8 @@ public class HomeServiceImpl implements HomeService {
     private HotMapper hotMapper;
     @Resource
     private RedisTemplate redisTemplate;
+    @Resource
+    private RewardService rewardService;
 
     @Override
     public Result getLatestPosts(HomeQueryDTO homeQueryDTO) {
@@ -365,6 +369,13 @@ public class HomeServiceImpl implements HomeService {
         int newOffset = 0;
         for (ZSetOperations.TypedTuple<String> tuple : tuples) {
             if (tuple.getScore() == minScore) newOffset++;
+        }
+
+        // 填充扩展信息（抽奖活动等）
+        List<Long> allStatusIds = finalList.stream().map(HotStatusVO::getId).toList();
+        Map<Long, List<ExtensionVO>> extMap = rewardService.getExtensionsByStatusIds(allStatusIds);
+        for (HotStatusVO vo : finalList) {
+            vo.setExtensions(extMap.getOrDefault(vo.getId(), Collections.emptyList()));
         }
 
         return Result.success(new ScrollResult(minScore, newOffset, finalList));

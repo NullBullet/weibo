@@ -402,13 +402,13 @@ public class WeiboServerApplicationTests {
                 saveStatusVO.setContent(content);
 
                 int rows = testMapper.insertStatus(user.getId(), saveStatusVO);
-                if (rows <= 0 || saveStatusVO.getId() == null) {
+                if (rows <= 0 || saveStatusVO.getStatusId() == null) {
                     System.out.println("微博插入失败: user=" + username);
                     failCount++;
                     continue;
                 }
 
-                Long statusId = saveStatusVO.getId();
+                Long statusId = saveStatusVO.getStatusId();
                 String postStatsKey = POST_STATS_KEY + statusId;
                 long createTime = saveStatusVO.getCreatedAt() != null
                         ? saveStatusVO.getCreatedAt().toEpochSecond(ZoneOffset.UTC)

@@ -17,7 +17,7 @@ public interface StatusesMapper {
     int saveStatusImages(@Param("statusesImageDTO") StatusesImageDTO statusesImageDTO,
                          @Param("statusId") Long statusId);
 
-    @Select("select created_at from statuses where id = #{statusId}")
+    @Select("select id as statusId, created_at from statuses where id = #{statusId}")
     SaveStatusVO getStatusById(Long statusId);
 
     @Update("update statuses set is_deleted = 1 where id = #{statusId} and is_deleted = 0")

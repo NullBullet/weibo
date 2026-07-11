@@ -5,6 +5,8 @@ import com.jun.dto.ScrollDTO;
 import com.jun.entity.StatusImage;
 import com.jun.result.Result;
 import com.jun.result.ScrollResult;
+import com.jun.service.RewardService;
+import com.jun.vo.ExtensionVO;
 import com.jun.vo.HotStatusVO;
 import com.jun.vo.HotTopicVO;
 import com.jun.vo.StatusVO;
@@ -31,6 +33,8 @@ public class HotServiceImpl implements HotService {
     private HotMapper hotMapper;
     @Resource
     private RedisTemplate redisTemplate;
+    @Resource
+    private RewardService rewardService;
 
     @Override
     public Result<List<HotTopicVO>> topics(Integer size) {
@@ -132,7 +136,8 @@ public class HotServiceImpl implements HotService {
             });
 
             //再填充转发原微博（仅用于本次响应，不写缓存）
-            fillOriginalStatus(dbList, currentUserId);
+            // 不在此处调用 fillOriginalStatus，统一在 finalList 构建完成后处理
+            // 避免 dbList 带上 originalStatus 后被写入缓存
             result.addAll(dbList);
         }
 
@@ -220,6 +225,13 @@ public class HotServiceImpl implements HotService {
             } else {
                 vo.setIsFollowed(null);
             }
+        }
+
+        // 填充扩展信息（抽奖活动等），在写缓存前完成，确保缓存包含 extensions
+        List<Long> allStatusIds = finalList.stream().map(HotStatusVO::getId).toList();
+        Map<Long, List<ExtensionVO>> extMap = rewardService.getExtensionsByStatusIds(allStatusIds);
+        for (HotStatusVO vo : finalList) {
+            vo.setExtensions(extMap.getOrDefault(vo.getId(), Collections.emptyList()));
         }
 
         // 先回写缓存（不含 originalStatus，避免嵌套缓存过时）
@@ -384,7 +396,16 @@ public class HotServiceImpl implements HotService {
                     originalMap.put(vo.getId(), vo);
                 }
 
-                //3.3 回写缓存
+                //3.3 填充扩展信息（抽奖活动等），在写缓存前完成
+                List<Long> origIds = new ArrayList<>(originalMap.keySet());
+                if (!origIds.isEmpty()) {
+                    Map<Long, List<ExtensionVO>> origExtMap = rewardService.getExtensionsByStatusIds(origIds);
+                    for (HotStatusVO vo : originalMap.values()) {
+                        vo.setExtensions(origExtMap.getOrDefault(vo.getId(), Collections.emptyList()));
+                    }
+                }
+
+                //3.4 回写缓存
                 redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
                     for (HotStatusVO vo : dbList) {
                         String key = POST_DETAIL_KEY + vo.getId();
@@ -473,7 +494,16 @@ public class HotServiceImpl implements HotService {
             originalMap.values().forEach(vo -> vo.setIsLiked(false));
         }
 
-        //6. 回填 originalStatus（只填充 originalStatus 为 null 的，避免覆盖已有的）
+        //6. 填充扩展信息（抽奖活动等）
+        if (!originalMap.isEmpty()) {
+            Map<Long, List<ExtensionVO>> origExtMap = rewardService.getExtensionsByStatusIds(
+                    new ArrayList<>(originalMap.keySet()));
+            for (HotStatusVO vo : originalMap.values()) {
+                vo.setExtensions(origExtMap.getOrDefault(vo.getId(), Collections.emptyList()));
+            }
+        }
+
+        //7. 回填 originalStatus（只填充 originalStatus 为 null 的，避免覆盖已有的）
         for (HotStatusVO vo : finalList) {
 
             if (vo.getOriginalStatusId() != null && vo.getOriginalStatus() == null) {

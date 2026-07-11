@@ -89,4 +89,7 @@ public class StatusVO implements Serializable {
     private StatusVO originalStatus;
 
     private UserVO user;
+
+    /** 扩展信息（抽奖活动等） */
+    private List<ExtensionVO> extensions;
 }

@@ -15,12 +15,14 @@ import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.result.ScrollResult;
 import com.jun.utils.OssUtil;
+import com.jun.vo.ExtensionVO;
 import com.jun.vo.FollowUserVO;
 import com.jun.vo.StatusVO;
 import com.jun.vo.UserCountVO;
 import com.jun.vo.UsersInfoVO;
 import com.jun.mapper.UsersMapper;
 import com.jun.service.UsersService;
+import com.jun.service.RewardService;
 import com.jun.context.BaseContext;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +54,8 @@ public class UsersServiceImpl implements UsersService {
     private OssUtil ossUtil;
     @Resource
     private RedisTemplate redisTemplate;
+    @Resource
+    private RewardService rewardService;
 
     @Override
     public Result<UsersInfoVO> me() {
@@ -416,6 +420,13 @@ public class UsersServiceImpl implements UsersService {
             });
         }
 
+        // 填充扩展信息（抽奖活动等）
+        List<Long> allStatusIds = finalList.stream().map(StatusVO::getId).toList();
+        Map<Long, List<ExtensionVO>> extMap = rewardService.getExtensionsByStatusIds(allStatusIds);
+        for (StatusVO vo : finalList) {
+            vo.setExtensions(extMap.getOrDefault(vo.getId(), Collections.emptyList()));
+        }
+
         //8. total
         //zCard 获取一个有序集合（Sorted Set / ZSet）中元素的总个数
         Long total = redisTemplate.opsForZSet().zCard(zsetKey);
@@ -558,6 +569,13 @@ public class UsersServiceImpl implements UsersService {
 
         // 再填充转发原微博（仅用于本次响应，不写缓存）
         fillOriginalStatus(record);
+
+        // 填充扩展信息（抽奖活动等）
+        List<Long> allStatusIds = record.stream().map(StatusVO::getId).toList();
+        Map<Long, List<ExtensionVO>> extMap = rewardService.getExtensionsByStatusIds(allStatusIds);
+        for (StatusVO vo : record) {
+            vo.setExtensions(extMap.getOrDefault(vo.getId(), Collections.emptyList()));
+        }
 
         return Result.success(new PageResult(total, record));
     }
@@ -849,6 +867,13 @@ public class UsersServiceImpl implements UsersService {
                     vo.getOriginalStatus().setIsLiked(false);
                 }
             });
+        }
+
+        // 填充扩展信息（抽奖活动等）
+        List<Long> allStatusIds = finalList.stream().map(StatusVO::getId).toList();
+        Map<Long, List<ExtensionVO>> extMap = rewardService.getExtensionsByStatusIds(allStatusIds);
+        for (StatusVO vo : finalList) {
+            vo.setExtensions(extMap.getOrDefault(vo.getId(), Collections.emptyList()));
         }
 
         //9. 计算下一页游标

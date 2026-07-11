@@ -95,4 +95,7 @@ public class SearchStatusVO implements Serializable {
 
     /** 原微博（转发时使用） */
     private SearchStatusVO originalStatus;
+
+    /** 扩展信息（抽奖活动等） */
+    private List<ExtensionVO> extensions;
 }

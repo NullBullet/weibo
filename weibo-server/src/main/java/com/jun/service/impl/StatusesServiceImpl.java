@@ -46,7 +46,7 @@ public class StatusesServiceImpl implements StatusesService {
         saveStatusVO.setContent(statusesImageDTO.getContent());
 
         int isSuccess1 = statusesMapper.saveStatus(userId,saveStatusVO);
-        Long statusId = saveStatusVO.getId();
+        Long statusId = saveStatusVO.getStatusId();
         if (isSuccess1 <=0) {
             log.error("微博id获取异常");
             throw new StatusPublishException(STATUS_PUBLISH_FAIL);

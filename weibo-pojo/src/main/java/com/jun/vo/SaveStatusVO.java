@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
  */
 @Data
 public class SaveStatusVO implements Serializable {
-    private Long id;
+    private Long statusId;
     private String content;
     private LocalDateTime createdAt;
 }

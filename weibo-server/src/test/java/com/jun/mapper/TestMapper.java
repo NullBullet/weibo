@@ -84,7 +84,7 @@ public interface TestMapper {
      * 使用 SaveStatusVO 接收自动生成的主键
      */
     @Insert("insert into statuses(user_id, content) values(#{userId}, #{saveStatusVO.content})")
-    @Options(useGeneratedKeys = true, keyProperty = "saveStatusVO.id")
+    @Options(useGeneratedKeys = true, keyProperty = "saveStatusVO.statusId")
     int insertStatus(@Param("userId") Long userId, @Param("saveStatusVO") SaveStatusVO saveStatusVO);
 
     // ======================== 互动: 评论插入 ========================
