@@ -74,9 +74,9 @@ public class NotificationsServiceImpl implements NotificationsService {
 
         // 4. 批量查最近点赞用户
         Map<String, List<SimpleUserVO>> postLikersMap = buildLikersMap(
-                notificationsMapper.getBatchRecentLikers(TargetType.POST.getCode(), postIds), 2);
+                postIds.isEmpty() ? Collections.emptyList() : notificationsMapper.getBatchRecentLikers(TargetType.POST.getCode(), postIds), 2);
         Map<String, List<SimpleUserVO>> commentLikersMap = buildLikersMap(
-                notificationsMapper.getBatchRecentLikers(TargetType.COMMENT.getCode(), commentIds), 2);
+                commentIds.isEmpty() ? Collections.emptyList() : notificationsMapper.getBatchRecentLikers(TargetType.COMMENT.getCode(), commentIds), 2);
 
         // 5. 组装 VO
         List<LikeNotificationVO> voList = new ArrayList<>();
