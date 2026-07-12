@@ -45,7 +45,7 @@ public class RewardWinConsumer {
         }
 
         try {
-            // 写入系统通知到 reward_notification 表
+            // 写入系统通知到 notification_system 表
             rewardActivityMapper.insertWinNotification(
                     message.getUserId(),
                     message.getActivityId(),

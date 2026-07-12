@@ -4,6 +4,8 @@ import com.jun.context.BaseContext;
 import com.jun.dto.CommentNotificationRawDTO;
 import com.jun.enumeration.TargetType;
 import com.jun.mapper.NotificationsMapper;
+import com.jun.mapper.RewardActivityMapper;
+import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.service.NotificationsService;
 import com.jun.vo.CommentNotificationVO;
@@ -13,6 +15,7 @@ import com.jun.vo.LikeUserVO;
 import com.jun.vo.NotificationRawVO;
 import com.jun.vo.SenderVO;
 import com.jun.vo.SimpleUserVO;
+import com.jun.vo.SystemNotificationVO;
 import jakarta.annotation.Resource;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -41,6 +44,8 @@ public class NotificationsServiceImpl implements NotificationsService {
     private NotificationsMapper notificationsMapper;
     @Resource
     private RedisTemplate redisTemplate;
+    @Resource
+    private RewardActivityMapper rewardActivityMapper;
 
     @Override
     public Result getLikeInfo() {
@@ -360,5 +365,31 @@ public class NotificationsServiceImpl implements NotificationsService {
         detail.setUsers(users);
 
         return Result.success(detail);
+    }
+
+    @Override
+    public Result getSystemNotifications(Integer page, Integer pageSize) {
+        Long userId = BaseContext.getCurrentId();
+        if (page == null || page < 1) page = 1;
+        if (pageSize == null || pageSize < 1) pageSize = 20;
+
+        int offset = (page - 1) * pageSize;
+        Integer total = rewardActivityMapper.countSystemNotifications(userId);
+        if (total == null) total = 0;
+
+        List<SystemNotificationVO> records = rewardActivityMapper.getSystemNotifications(userId, offset, pageSize);
+        if (records == null) records = Collections.emptyList();
+
+        PageResult pageResult = new PageResult();
+        pageResult.setTotal(total);
+        pageResult.setRecords(records);
+        return Result.success(pageResult);
+    }
+
+    @Override
+    public Result markAllSystemNotificationsRead() {
+        Long userId = BaseContext.getCurrentId();
+        int rows = rewardActivityMapper.markAllNotificationsRead(userId);
+        return Result.success(rows);
     }
 }

@@ -129,8 +129,8 @@
     </select>
 
     <insert id="insertWinNotification">
-        insert into reward_notification (user_id, activity_id, content, create_time)
-        values (#{userId}, #{activityId}, #{content}, now())
+        insert into notification_system (user_id, category, content, related_id, related_type, create_time)
+        values (#{userId}, 'REWARD', #{content}, #{activityId}, 'ACTIVITY', now())
     </insert>
 
     <!-- 批量按 statusId 查询活动（用于 VO 扩展信息填充，避免 N+1） -->
@@ -140,6 +140,26 @@
         <foreach collection="statusIds" item="statusId" open="(" separator="," close=")">
             #{statusId}
         </foreach>
+    </select>
+
+    <!-- ==================== 系统通知 ==================== -->
+
+    <select id="getSystemNotifications" resultType="com.jun.vo.SystemNotificationVO">
+        select id as notificationId,
+               category,
+               content,
+               related_id,
+               related_type,
+               is_read,
+               date_format(create_time, '%Y-%m-%d %H:%i:%s') as createTime
+        from notification_system
+        where user_id = #{userId}
+        order by create_time desc
+        limit #{offset}, #{pageSize}
+    </select>
+
+    <select id="countSystemNotifications" resultType="java.lang.Integer">
+        select count(1) from notification_system where user_id = #{userId}
     </select>
 
 </mapper>

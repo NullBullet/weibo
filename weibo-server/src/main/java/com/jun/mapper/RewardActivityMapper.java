@@ -3,6 +3,7 @@ package com.jun.mapper;
 import com.jun.entity.RewardActivity;
 import com.jun.vo.ParticipantVO;
 import com.jun.vo.RewardRecordVO;
+import com.jun.vo.SystemNotificationVO;
 import com.jun.vo.WinnerVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -61,4 +62,13 @@ public interface RewardActivityMapper {
                                 @Param("content") String content);
 
     List<RewardActivity> getByStatusIds(@Param("statusIds") List<Long> statusIds);
+
+    List<SystemNotificationVO> getSystemNotifications(@Param("userId") Long userId,
+                                                       @Param("offset") Integer offset,
+                                                       @Param("pageSize") Integer pageSize);
+
+    Integer countSystemNotifications(@Param("userId") Long userId);
+
+    @Update("update notification_system set is_read = 1 where user_id = #{userId} and is_read = 0")
+    int markAllNotificationsRead(@Param("userId") Long userId);
 }

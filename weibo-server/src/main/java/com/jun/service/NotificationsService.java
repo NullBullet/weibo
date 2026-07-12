@@ -8,4 +8,8 @@ public interface NotificationsService {
     Result getLikeDetail(Integer targetId);
 
     Result getCommentInfo();
+
+    Result getSystemNotifications(Integer page, Integer pageSize);
+
+    Result markAllSystemNotificationsRead();
 }
