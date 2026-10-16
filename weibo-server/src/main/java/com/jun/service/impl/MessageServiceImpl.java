@@ -3,27 +3,31 @@ package com.jun.service.impl;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import com.jun.context.BaseContext;
+import com.jun.vo.*;
 import com.jun.dto.MessageQueryDTO;
 import com.jun.dto.MessageReadDTO;
-import com.jun.dto.SendDTO;
 import com.jun.entity.Conversation;
 import com.jun.entity.ConversationUser;
 import com.jun.entity.PrivateMessage;
 import com.jun.entity.User;
+import com.jun.exception.MessageSendPermissionDeniedException;
+import com.jun.exception.SessionNotFoundException;
 import com.jun.mapper.MessageMapper;
 import com.jun.mapper.UsersMapper;
 import com.jun.result.Result;
 import com.jun.service.MessageService;
-import com.jun.vo.ConversationDetailVO;
-import com.jun.vo.ConversationVO;
-import com.jun.vo.MessageVO;
+import com.jun.websocket.ChatWebSocketHandler;
 import jakarta.annotation.Resource;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Service
 public class MessageServiceImpl implements MessageService {
@@ -32,6 +36,10 @@ public class MessageServiceImpl implements MessageService {
     private MessageMapper messageMapper;
     @Resource
     private UsersMapper usersMapper;
+    @Resource
+    private MessageService messageService;
+    @Resource
+    private ChatWebSocketHandler chatWebSocketHandler;
 
     @Override
     public Result getOrCreatConversation(Long targetUserId) {
@@ -115,40 +123,117 @@ public class MessageServiceImpl implements MessageService {
         return Result.success(records);
     }
 
+    @Transactional
     @Override
-    public Result send(SendDTO sendDTO) {
-        Long senderId = BaseContext.getCurrentId();
-        Long conversationId = sendDTO.getConversationId();
-        String content = sendDTO.getContent();
+    public ChatMessageVO saveMessage(
+            Long senderId,
+            Long conversationId,
+            String content,
+            String clientMessageId) {
 
-        // 1. 获取会话确定接收方
-        Conversation conv = messageMapper.selectConversationById(conversationId);
-        if (conv == null) {
-            return Result.error("会话不存在");
+        // 1. 校验客户端消息 ID
+        if (!StringUtils.hasText(clientMessageId)
+                || clientMessageId.length() > 64) {
+            throw new IllegalArgumentException("客户端消息ID无效");
         }
-        Long receiverId = conv.getUser1Id().equals(senderId) ? conv.getUser2Id() : conv.getUser1Id();
 
-        // 2. 插入消息
+        // 2. 查询是否已经处理过这条消息
+        PrivateMessage existing =
+                messageMapper.selectBySenderAndClientMessageId(
+                        senderId, clientMessageId);
+
+        if (existing != null) {
+            // 同一个 ID 不能被用于发送另一条消息
+            if (!Objects.equals(existing.getConversationId(), conversationId)
+                    || !Objects.equals(existing.getContent(), content)) {
+                throw new IllegalArgumentException("客户端消息ID已被其他消息使用");
+            }
+
+            // 返回已有消息，不重复插入，也不重复增加未读数
+            return convertToChatMessageVO(existing);
+        }
+
+        Conversation conv =
+                messageMapper.selectConversationById(conversationId);
+
+        if (conv == null) {
+            throw new SessionNotFoundException("会话不存在");
+        }
+
+        if (!conv.getUser1Id().equals(senderId)
+                && !conv.getUser2Id().equals(senderId)) {
+            throw new MessageSendPermissionDeniedException("无权在该会话中发送消息");
+        }
+
+        Long receiverId =
+                conv.getUser1Id().equals(senderId)
+                        ? conv.getUser2Id()
+                        : conv.getUser1Id();
+
         LocalDateTime now = LocalDateTime.now();
+
         PrivateMessage message = new PrivateMessage();
         message.setConversationId(conversationId);
         message.setSenderId(senderId);
+        message.setClientMessageId(clientMessageId);
         message.setReceiverId(receiverId);
         message.setContent(content);
         message.setCreateTime(now);
-        messageMapper.insertMessage(message);
+
+        try {
+            messageMapper.insertMessage(message);
+        } catch (DuplicateKeyException e) {
+            existing = messageMapper.selectBySenderAndClientMessageId(
+                            senderId, clientMessageId);
+
+            if (existing == null) {
+                throw e;
+            }
+
+            if (!Objects.equals(existing.getConversationId(), conversationId)
+                    || !Objects.equals(existing.getContent(), content)) {
+                throw new IllegalArgumentException(
+                        "客户端消息ID已被其他消息使用");
+            }
+
+            return convertToChatMessageVO(existing);
+        }
+
         Long messageId = message.getId();
 
-        // 3. 更新会话最后消息（varchar(500) 截断）
-        String lastMsg = content.length() > 500 ? content.substring(0, 500) : content;
-        messageMapper.updateConversationLastMessage(conversationId, lastMsg, now);
+        String lastMsg =
+                content.length() > 500
+                        ? content.substring(0, 500)
+                        : content;
 
-        // 4. 增加对方未读数
-        messageMapper.incrementUnreadCount(conversationId, receiverId);
+        messageMapper.updateConversationLastMessage(
+                conversationId,
+                lastMsg,
+                now
+        );
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("messageId", messageId);
-        return Result.success(result);
+        messageMapper.incrementUnreadCount(
+                conversationId,
+                receiverId
+        );
+
+        ChatMessageVO vo = new ChatMessageVO();
+        vo.setType("NEW_MESSAGE");
+        vo.setMessageId(messageId);
+        vo.setClientMessageId(clientMessageId);
+        vo.setConversationId(conversationId);
+        vo.setSenderId(senderId);
+        vo.setReceiverId(receiverId);
+        vo.setContent(content);
+        vo.setCreateTime(now);
+
+        return vo;
+    }
+
+    @Override
+    public Long getUserUnReadCount(Long UserId) {
+        List<Long> unReadList = messageMapper.getUserUnReadCount(UserId);
+        return unReadList.stream().mapToLong(Long::longValue).sum();
     }
 
     @Override
@@ -165,6 +250,28 @@ public class MessageServiceImpl implements MessageService {
         // 3. 清空未读数
         messageMapper.resetUnreadCount(conversationId, userId, latestMsgId);
 
+        // 未读消息数量推送
+        Long userUnReadCount = messageService.getUserUnReadCount(userId);
+        chatWebSocketHandler.sendUnreadCount(userId,userUnReadCount);
+
         return Result.success();
+    }
+
+    /**
+     * 将私信实体转换为 WebSocket 消息 VO
+     */
+    private ChatMessageVO convertToChatMessageVO(PrivateMessage message) {
+        ChatMessageVO vo = new ChatMessageVO();
+
+        vo.setType("NEW_MESSAGE");
+        vo.setMessageId(message.getId());
+        vo.setClientMessageId(message.getClientMessageId());
+        vo.setConversationId(message.getConversationId());
+        vo.setSenderId(message.getSenderId());
+        vo.setReceiverId(message.getReceiverId());
+        vo.setContent(message.getContent());
+        vo.setCreateTime(message.getCreateTime());
+
+        return vo;
     }
 }

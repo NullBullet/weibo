@@ -57,8 +57,8 @@
     <!-- ==================== PrivateMessage ==================== -->
 
     <insert id="insertMessage" useGeneratedKeys="true" keyProperty="id">
-        insert into private_message (conversation_id, sender_id, receiver_id, content, create_time)
-        values (#{conversationId}, #{senderId}, #{receiverId}, #{content}, #{createTime})
+        insert into private_message (conversation_id, sender_id, receiver_id, content, create_time,client_message_id)
+        values (#{conversationId}, #{senderId}, #{receiverId}, #{content}, #{createTime},#{clientMessageId})
     </insert>
 
     <update id="updateMessagesRead">
@@ -75,6 +75,34 @@
             date_format(create_time, '%Y-%m-%d %H:%i:%s') as createTime
         from private_message
         where conversation_id = #{conversationId}
-        order by create_time desc
+        order by create_time desc , id desc
+    </select>
+
+    <select id="selectUnreadMessages" resultType="com.jun.vo.MessageVO">
+        select
+            id as messageId,
+            sender_id as senderId,
+            receiver_id as receiverId,
+            conversation_id as conversationId,
+            content,
+            date_format(create_time, '%Y-%m-%d %H:%i:%s') as createTime
+        from private_message
+        where receiver_id = #{userId}
+          and is_read = 0
+        order by create_time
+    </select>
+
+    <select id="getUserUnReadCount" resultType="java.lang.Long">
+        select unread_count
+        from conversation_user
+        where user_id = #{UserId} and unread_count != 0;
+    </select>
+
+    <select id="selectBySenderAndClientMessageId" resultType="com.jun.entity.PrivateMessage">
+        select *
+        from private_message
+        where sender_id = #{senderId}
+          and client_message_id = #{clientMessageId}
+        limit 1
     </select>
 </mapper>

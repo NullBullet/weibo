@@ -2,7 +2,6 @@ package com.jun.controller.v1.user;
 
 import com.jun.dto.MessageQueryDTO;
 import com.jun.dto.MessageReadDTO;
-import com.jun.dto.SendDTO;
 import com.jun.result.Result;
 import com.jun.service.MessageService;
 import jakarta.annotation.Resource;
@@ -39,12 +38,6 @@ public class MessageController {
     public Result getHistory(MessageQueryDTO messageQueryDTO){
         log.info("获取聊天记录：{}",messageQueryDTO);
         return messageService.getHistory(messageQueryDTO);
-    }
-
-    @PostMapping("/send")
-    public Result send(@RequestBody SendDTO sendDTO){
-        log.info("发送消息：{}",sendDTO);
-        return messageService.send(sendDTO);
     }
 
     @PostMapping("/read")

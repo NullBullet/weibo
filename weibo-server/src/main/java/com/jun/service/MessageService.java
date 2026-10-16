@@ -1,9 +1,14 @@
 package com.jun.service;
 
+import com.jun.vo.ChatMessageVO;
 import com.jun.dto.MessageQueryDTO;
 import com.jun.dto.MessageReadDTO;
 import com.jun.dto.SendDTO;
 import com.jun.result.Result;
+import com.jun.vo.MessageVO;
+
+import java.io.IOException;
+import java.util.List;
 
 public interface MessageService {
     Result getOrCreatConversation(Long targetUserId);
@@ -14,7 +19,10 @@ public interface MessageService {
 
     Result getHistory(MessageQueryDTO messageQueryDTO);
 
-    Result send(SendDTO sendDTO);
+    // 新增：保存私信
+    ChatMessageVO saveMessage(Long senderId, Long conversationId, String content, String clientMessageId);
+
+    Long getUserUnReadCount(Long UserId);
 
     Result read(MessageReadDTO messageReadDTO);
 }

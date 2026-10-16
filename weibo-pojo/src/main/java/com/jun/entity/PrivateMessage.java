@@ -55,4 +55,6 @@ public class PrivateMessage implements Serializable {
      * 消息状态：1-正常，2-撤回，3-已删除
      */
     private Integer status;
+
+    private String clientMessageId;
 }

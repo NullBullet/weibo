@@ -41,6 +41,7 @@ public interface MessageMapper {
                           @Param("userId") Long userId,
                           @Param("lastReadMessageId") Long lastReadMessageId);
 
+    List<Long> getUserUnReadCount(Long userId);
     // ==================== PrivateMessage ====================
 
     void insertMessage(PrivateMessage message);
@@ -52,4 +53,11 @@ public interface MessageMapper {
 
     @Select("select id from private_message where conversation_id = #{conversationId} order by create_time desc limit 1")
     Long selectLatestMessageId(@Param("conversationId") Long conversationId);
+
+    List<MessageVO> selectUnreadMessages(@Param("userId") Long userId);
+
+    PrivateMessage selectBySenderAndClientMessageId(
+            @Param("senderId") Long senderId,
+            @Param("clientMessageId") String clientMessageId
+    );
 }
