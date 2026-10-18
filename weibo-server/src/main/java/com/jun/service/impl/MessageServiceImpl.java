@@ -192,7 +192,9 @@ public class MessageServiceImpl implements MessageService {
         try {
             messageMapper.insertMessage(message);
         } catch (DuplicateKeyException e) {
-            existing = messageMapper.selectBySenderAndClientMessageId(
+            // 冲突行必已提交（若未提交会先在 insert 上等锁），
+            // 用 FOR UPDATE 当前读补偿查询，避免 REPEATABLE READ 快照看不到并发已提交记录导致虚假失败
+            existing = messageMapper.selectBySenderAndClientMessageIdForUpdate(
                             senderId, clientMessageId);
 
             if (existing == null) {

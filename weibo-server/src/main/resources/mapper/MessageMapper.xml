@@ -105,4 +105,15 @@
           and client_message_id = #{clientMessageId}
         limit 1
     </select>
+
+    <!-- 唯一索引冲突后的补偿查询：FOR UPDATE 当前读，绕过 REPEATABLE READ 快照，
+         保证能看到并发事务刚提交的记录，避免虚假发送失败 -->
+    <select id="selectBySenderAndClientMessageIdForUpdate" resultType="com.jun.entity.PrivateMessage">
+        select *
+        from private_message
+        where sender_id = #{senderId}
+          and client_message_id = #{clientMessageId}
+        limit 1
+        for update
+    </select>
 </mapper>

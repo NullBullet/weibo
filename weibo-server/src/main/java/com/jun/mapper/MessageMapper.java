@@ -60,4 +60,9 @@ public interface MessageMapper {
             @Param("senderId") Long senderId,
             @Param("clientMessageId") String clientMessageId
     );
+
+    PrivateMessage selectBySenderAndClientMessageIdForUpdate(
+            @Param("senderId") Long senderId,
+            @Param("clientMessageId") String clientMessageId
+    );
 }
