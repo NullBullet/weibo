@@ -147,12 +147,14 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             Long userUnReadCount = messageService.getUserUnReadCount(messageVO.getReceiverId());
             sendUnreadCount(targetSession,userUnReadCount);
 
+            // 日志脱敏：不输出私信正文，仅保留 ID 与内容长度用于排查
             log.info(
-                    "用户 {} → 用户 {}：{}，messageId = {}",
+                    "用户 {} → 用户 {}：消息已推送，conversationId = {}，messageId = {}，contentLength = {}",
                     messageVO.getSenderId(),
                     messageVO.getReceiverId(),
-                    messageVO.getContent(),
-                    messageVO.getMessageId()
+                    messageVO.getConversationId(),
+                    messageVO.getMessageId(),
+                    messageVO.getContent() == null ? 0 : messageVO.getContent().length()
             );
 
         } else {

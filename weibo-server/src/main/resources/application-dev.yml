@@ -32,3 +32,10 @@ jun:
     port: 5672
     username: guest
     password: guest
+
+# SQL 调试日志仅在开发环境开启，避免生产环境输出私信等敏感参数
+logging:
+  level:
+    com:
+      jun:
+        mapper: debug

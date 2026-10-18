@@ -1,13 +1,18 @@
 package com.jun.interceptor;
 
+import com.jun.constant.JwtClaimsConstant;
 import com.jun.properties.JwtProperties;
 import com.jun.utils.JwtUtil;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.JwtException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 
@@ -33,18 +38,36 @@ public class JwtHandshakeInterceptor
         log.info("WebSocket开始握手");
         String token = getToken(request);
 
-        if (token == null) {
+        // 无 Token：拒绝握手，返回 401
+        if (!StringUtils.hasText(token)) {
+            log.warn("WebSocket 握手拒绝：缺少 token，uri={}", request.getURI());
+            response.setStatusCode(HttpStatus.UNAUTHORIZED);
             return false;
         }
 
         try {
-            Claims claims = JwtUtil.parseJWT(jwtProperties.getUserSecretKey(),token);
-            Long userId = claims.get("userId", Long.class);
+            Claims claims = JwtUtil.parseJWT(jwtProperties.getUserSecretKey(), token);
+            Long userId = claims.get(JwtClaimsConstant.USER_ID, Long.class);
+
+            // userId 必须存在且合法，不能将 null 放入 WebSocket 会话属性
+            if (userId == null || userId <= 0) {
+                log.warn("WebSocket 握手拒绝：token 中缺少合法的 userId");
+                response.setStatusCode(HttpStatus.UNAUTHORIZED);
+                return false;
+            }
 
             attributes.put("userId", userId);
 
             return true;
-        } catch (Exception e) {
+        } catch (ExpiredJwtException e) {
+            // 过期 Token：拒绝握手，返回 401；日志不记录完整 token
+            log.warn("WebSocket 握手拒绝：token 已过期");
+            response.setStatusCode(HttpStatus.UNAUTHORIZED);
+            return false;
+        } catch (JwtException | IllegalArgumentException e) {
+            // 无效/伪造 Token：拒绝握手，返回 401；不向客户端返回任何校验细节
+            log.warn("WebSocket 握手拒绝：token 无效");
+            response.setStatusCode(HttpStatus.UNAUTHORIZED);
             return false;
         }
     }

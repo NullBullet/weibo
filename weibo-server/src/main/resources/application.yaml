@@ -56,7 +56,6 @@ logging:
   level:
     com:
       jun:
-        mapper: debug
         service: info
         controller: info
 
@@ -68,6 +67,9 @@ jun:
     user-ttl: 7200000
     # 设置前端传递过来的令牌名称
     user-token-name: Authorization
+  websocket:
+    # WebSocket 握手 Origin 白名单，逗号分隔；生产环境部署时覆盖为真实前端域名
+    allowed-origins: http://localhost:8081
   aliyun:
     endpoint: ${jun.aliyun.endpoint}
     access-key-id: ${jun.aliyun.access-key-id}
