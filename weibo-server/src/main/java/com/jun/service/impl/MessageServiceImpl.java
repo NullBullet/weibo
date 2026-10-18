@@ -134,7 +134,7 @@ public class MessageServiceImpl implements MessageService {
 
     @Transactional
     @Override
-    public ChatMessageVO saveMessage(
+    public MessageSaveResult saveMessage(
             Long senderId,
             Long conversationId,
             String content,
@@ -158,8 +158,8 @@ public class MessageServiceImpl implements MessageService {
                 throw new IllegalArgumentException("客户端消息ID已被其他消息使用");
             }
 
-            // 返回已有消息，不重复插入，也不重复增加未读数
-            return convertToChatMessageVO(existing);
+            // 幂等重放：返回已有消息，不重复插入，不重复增加未读数，调用方也不重复推送
+            return MessageSaveResult.replayed(convertToChatMessageVO(existing));
         }
 
         Conversation conv =
@@ -207,7 +207,8 @@ public class MessageServiceImpl implements MessageService {
                         "客户端消息ID已被其他消息使用");
             }
 
-            return convertToChatMessageVO(existing);
+            // 幂等重放：并发冲突时命中的是其他事务刚提交的原消息
+            return MessageSaveResult.replayed(convertToChatMessageVO(existing));
         }
 
         Long messageId = message.getId();
@@ -238,7 +239,8 @@ public class MessageServiceImpl implements MessageService {
         vo.setContent(content);
         vo.setCreateTime(now);
 
-        return vo;
+        // 首次创建
+        return MessageSaveResult.created(vo);
     }
 
     @Override

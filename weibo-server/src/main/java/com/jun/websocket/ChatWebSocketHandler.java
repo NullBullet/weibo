@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jun.dto.ChatMessageDTO;
 import com.jun.vo.ChatMessageVO;
+import com.jun.vo.MessageSaveResult;
 import com.jun.service.MessageService;
 import com.jun.vo.NotifyUnreadCountVO;
 import jakarta.annotation.Resource;
@@ -15,6 +16,7 @@ import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator;
+import org.springframework.web.socket.handler.SessionLimitExceededException;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
@@ -84,20 +86,20 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             if (!"PING".equals(type) && !"CHAT".equals(type)) {
                 log.warn("WebSocket 收到不支持的消息类型，userId={}", session.getAttributes().get("userId"));
 
-                senderSession.sendMessage(new TextMessage("{\"type\":\"ERROR\",\"message\":\"不支持的消息类型\"}"));
+                sendError(senderSession, "不支持的消息类型", null);
                 return;
             }
 
             // 2.1 捕获 JSON 解析异常
         } catch (JsonProcessingException e) {
             log.warn("WebSocket 收到非法 JSON，userId={}",session.getAttributes().get("userId"));
-            senderSession.sendMessage(new TextMessage("{\"type\":\"ERROR\",\"message\":\"消息格式错误\"}"));
+            sendError(senderSession, "消息格式错误", null);
             return;
         }
 
         // 业务层心跳机制
         if ("PING".equals(chatMessage.getType())) {
-            senderSession.sendMessage(new TextMessage("{\"type\":\"PONG\"}"));
+            sendMessageQuietly(senderSession, new TextMessage("{\"type\":\"PONG\"}"), "PONG");
             return;
         }
 
@@ -113,10 +115,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        // 3. 保存消息到 MySQL
-        ChatMessageVO messageVO;
+        // 3. 保存消息到 MySQL（幂等：重复 clientMessageId 返回原消息并标记 replay）
+        MessageSaveResult saveResult;
         try {
-            messageVO = messageService.saveMessage(
+            saveResult = messageService.saveMessage(
                     senderId,
                     chatMessage.getConversationId(),
                     chatMessage.getContent(),
@@ -128,13 +130,23 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        // 返回给客户端的确认消息入库
+        ChatMessageVO messageVO = saveResult.getMessage();
+
+        // 返回给客户端的确认消息入库（首次创建与幂等重放都返回指向原 messageId 的 ACK）。
+        // ACK 发送失败不代表数据库保存失败：消息已持久化，客户端可复用原 clientMessageId 重试获取幂等 ACK
         ChatMessageVO ack = new ChatMessageVO();
         ack.setType("MESSAGE_ACK");
         ack.setClientMessageId(chatMessage.getClientMessageId());
         ack.setMessageId(messageVO.getMessageId());
         String ackJson = JSONUtil.toJsonStr(ack);
-        senderSession.sendMessage(new TextMessage(ackJson));
+        sendMessageQuietly(senderSession, new TextMessage(ackJson), "MESSAGE_ACK");
+
+        // 幂等重放：消息此前已保存并推送过，不得再次向接收者推送 NEW_MESSAGE 和未读数
+        if (saveResult.isReplay()) {
+            log.info("幂等重放，跳过重复推送，senderId = {}, messageId = {}",
+                    senderId, messageVO.getMessageId());
+            return;
+        }
 
         // 4. 根据服务器计算出的 receiverId 找接收者
         WebSocketSession targetSession =
@@ -147,8 +159,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             // 6. 把完整消息对象转换成 JSON
             String json = objectMapper.writeValueAsString(messageVO);
 
-            // 7. 推送给接收者
-            targetSession.sendMessage(new TextMessage(json));
+            // 7. 推送给接收者；推送失败不影响已持久化的消息和已增加的未读数，
+            //    也不应中断发送者的处理流程（此前异常上抛会误关发送者连接）
+            sendMessageQuietly(targetSession, new TextMessage(json), "NEW_MESSAGE");
 
             // 未读消息数量推送
             Long userUnReadCount = messageService.getUserUnReadCount(messageVO.getReceiverId());
@@ -208,15 +221,12 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
         String json = JSONUtil.toJsonStr(unreadCount);
 
-        try {
-            session.sendMessage(new TextMessage(json));
-        } catch (IOException e) {
-            log.warn("发送未读数通知失败", e);
-        }
+        sendMessageQuietly(session, new TextMessage(json), "UNREAD_COUNT");
     }
 
     // 修改：统一构造 ERROR 响应；clientMessageId 非空时携带，供前端精确匹配失败的发送消息；
-    // 未携带（如非法 JSON、不支持的消息类型等连接级/协议级错误）时前端只提示，不影响任何消息状态
+    // 未携带（如非法 JSON、不支持的消息类型等连接级/协议级错误）时前端只提示，不影响任何消息状态。
+    // 单次发送、失败仅记录日志，不重试，避免连接已不可用时反复发送 ERROR
     private void sendError(WebSocketSession session, String message, String clientMessageId) {
         try {
             Map<String, String> error = new HashMap<>();
@@ -225,9 +235,50 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 error.put("clientMessageId", clientMessageId);
             }
             error.put("message", message);
-            session.sendMessage(new TextMessage(objectMapper.writeValueAsString(error)));
+            sendMessageQuietly(session, new TextMessage(objectMapper.writeValueAsString(error)), "ERROR");
+        } catch (JsonProcessingException e) {
+            log.warn("构造 ERROR 响应失败", e);
+        }
+    }
+
+    /**
+     * 统一发送入口：捕获并记录发送异常，不向上抛出，避免单次发送失败
+     * 中断消息处理流程或误关发送者连接（异常原先会抛给 ExceptionWebSocketHandlerDecorator 关闭会话）。
+     * 仅对 ConcurrentWebSocketSessionDecorator 判定"不可靠"的会话（发送超时/缓冲超限）按官方语义主动关闭，
+     * 交由 afterConnectionClosed 清理映射，防止慢客户端每条消息都阻塞到发送超时。
+     *
+     * @return 是否发送成功（会话不可用或发送失败均返回 false）
+     */
+    private boolean sendMessageQuietly(WebSocketSession session, TextMessage message, String scene) {
+        if (session == null || !session.isOpen()) {
+            log.warn("WebSocket 发送跳过（会话不可用），scene = {}，sessionId = {}",
+                    scene, session == null ? "null" : session.getId());
+            return false;
+        }
+
+        try {
+            session.sendMessage(message);
+            return true;
+        } catch (SessionLimitExceededException e) {
+            // 发送超时（10s）或缓冲超限（512KB）：会话已不可靠，主动关闭，避免无限占用
+            log.warn("WebSocket 会话不可靠，关闭连接，scene = {}，sessionId = {}，reason = {}",
+                    scene, session.getId(), e.getMessage());
+            try {
+                session.close(e.getStatus());
+            } catch (IOException closeEx) {
+                log.warn("关闭不可靠会话失败，sessionId = {}", session.getId());
+            }
+            return false;
         } catch (IOException e) {
-            log.warn("发送 ERROR 响应失败", e);
+            // 底层连接已断或网络异常：记录后放弃，连接清理交给容器回调
+            log.warn("WebSocket 发送失败，scene = {}，sessionId = {}，error = {}",
+                    scene, session.getId(), e.getMessage());
+            return false;
+        } catch (RuntimeException e) {
+            // 会话正在关闭/已关闭（IllegalStateException）等其他运行时异常，同样仅记录
+            log.warn("WebSocket 发送失败，scene = {}，sessionId = {}，error = {}",
+                    scene, session.getId(), e.getMessage());
+            return false;
         }
     }
 }
