@@ -70,6 +70,13 @@ jun:
   websocket:
     # WebSocket 握手 Origin 白名单，逗号分隔；生产环境部署时覆盖为真实前端域名
     allowed-origins: http://localhost:8081
+    # CHAT 消息发送频率限制（连接级令牌桶）：rate 为每秒补充令牌数，burst 为桶容量；rate <= 0 关闭限流
+    chat-rate-limit:
+      rate: 10
+      burst: 20
+    # 连接空闲超时（秒）：超过该时间未收到任何消息（含 PING）的连接将被服务端关闭；
+    # 必须大于前端心跳间隔
+    idle-timeout-seconds: 300
   aliyun:
     endpoint: ${jun.aliyun.endpoint}
     access-key-id: ${jun.aliyun.access-key-id}

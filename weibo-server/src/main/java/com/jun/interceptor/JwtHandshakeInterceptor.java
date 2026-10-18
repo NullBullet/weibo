@@ -58,6 +58,12 @@ public class JwtHandshakeInterceptor
 
             attributes.put("userId", userId);
 
+            // 记录 token 过期时间，供连接建立后的过期检查（过期后关闭连接，与 HTTP 401 行为一致）
+            java.util.Date expiration = claims.getExpiration();
+            if (expiration != null) {
+                attributes.put("tokenExp", expiration.getTime());
+            }
+
             return true;
         } catch (ExpiredJwtException e) {
             // 过期 Token：拒绝握手，返回 401；日志不记录完整 token

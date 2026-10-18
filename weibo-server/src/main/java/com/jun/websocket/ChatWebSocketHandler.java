@@ -10,6 +10,8 @@ import com.jun.service.MessageService;
 import com.jun.vo.NotifyUnreadCountVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.CloseStatus;
@@ -38,6 +40,18 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     // userId -> 该用户的活跃连接列表（支持同一用户多标签页同时在线，推送广播到全部连接）
     private final Map<Long, List<WebSocketSession>> safeOnlineUsers = new ConcurrentHashMap<>();
 
+    /** CHAT 消息发送频率限制：每秒补充令牌数，<=0 表示关闭限流 */
+    @Value("${jun.websocket.chat-rate-limit.rate:10}")
+    private int chatRateLimit;
+
+    /** CHAT 消息发送频率限制：令牌桶容量（允许的瞬时突发量） */
+    @Value("${jun.websocket.chat-rate-limit.burst:20}")
+    private int chatRateBurst;
+
+    /** 连接空闲超时（秒）：超过该时间未收到任何消息（含 PING）的连接将被服务端关闭 */
+    @Value("${jun.websocket.idle-timeout-seconds:300}")
+    private int idleTimeoutSeconds;
+
     // 客户端连接成功时执行
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
@@ -53,6 +67,12 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         // 把包装器引用存入会话属性：当前请求的响应始终路由回发起它的连接，
         // 不受连接映射后续变化的影响，同时复用装饰器的并发发送保护
         session.getAttributes().put("safeSession", safeSession);
+
+        // 连接活跃时间初值与 CHAT 频率限流器（连接级）
+        session.getAttributes().put("lastActivity", System.currentTimeMillis());
+        if (chatRateLimit > 0) {
+            session.getAttributes().put("chatRateLimiter", new ChatRateLimiter(chatRateLimit, chatRateBurst));
+        }
 
         safeOnlineUsers.computeIfAbsent(userId, k -> new CopyOnWriteArrayList<>())
                 .add(safeSession);
@@ -70,6 +90,23 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws IOException {
         // 1. 获取发送者
         Long senderId = (Long) session.getAttributes().get("userId");
+
+        // Token 过期检查：连接存活期间 token 过期后不再处理后续消息，
+        // 关闭连接后前端重连会走握手 401，与 HTTP 过期行为一致
+        Long tokenExp = (Long) session.getAttributes().get("tokenExp");
+        if (tokenExp != null && System.currentTimeMillis() > tokenExp) {
+            log.warn("WebSocket token 已过期，关闭连接，userId = {}", senderId);
+            sendMessageQuietly(session, new TextMessage("{\"type\":\"ERROR\",\"message\":\"登录已过期\"}"), "ERROR");
+            try {
+                session.close(CloseStatus.GOING_AWAY);
+            } catch (IOException e) {
+                log.warn("关闭过期连接失败，userId = {}", senderId);
+            }
+            return;
+        }
+
+        // 刷新连接活跃时间（含 PING），供空闲扫描清理半开连接
+        session.getAttributes().put("lastActivity", System.currentTimeMillis());
 
         // 响应路由：使用发起当前请求的连接自己的包装器（PONG/ERROR/ACK 只回到该连接），
         // 不从映射中按 userId 查找，避免同用户多连接时响应发到别的连接；
@@ -123,6 +160,18 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         if (!StringUtils.hasText(content) || content.length() > 1000) {
             sendError(senderSession, "消息内容不合法", chatMessage.getClientMessageId());
             return;
+        }
+
+        // 连接级发送频率限制（令牌桶）：超限按发送失败处理，带 clientMessageId 供前端标记失败；
+        // 该消息未入库，客户端可稍后复用原 clientMessageId 重试（幂等安全）
+        if (chatRateLimit > 0) {
+            ChatRateLimiter limiter =
+                    (ChatRateLimiter) session.getAttributes().get("chatRateLimiter");
+            if (limiter != null && !limiter.tryAcquire()) {
+                log.warn("WebSocket 消息发送过于频繁，userId = {}", senderId);
+                sendError(senderSession, "发送过于频繁，请稍后再试", chatMessage.getClientMessageId());
+                return;
+            }
         }
 
         // 3. 保存消息到 MySQL（幂等：重复 clientMessageId 返回原消息并标记 replay）
@@ -303,6 +352,60 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             // 会话正在关闭/已关闭（IllegalStateException）等其他运行时异常，同样仅记录
             log.warn("WebSocket 发送失败，scene = {}，sessionId = {}，error = {}",
                     scene, session.getId(), e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 空闲连接扫描：清理半开连接（客户端异常断网后服务端收不到关闭帧）。
+     * 活跃时间由 handleTextMessage 每次收到消息（含 PING）时刷新，
+     * 正常客户端心跳间隔必须小于 jun.websocket.idle-timeout-seconds。
+     */
+    @Scheduled(fixedDelay = 60_000)
+    public void sweepIdleSessions() {
+        long now = System.currentTimeMillis();
+        safeOnlineUsers.forEach((userId, sessions) -> {
+            for (WebSocketSession session : sessions) {
+                Long lastActivity = (Long) session.getAttributes().get("lastActivity");
+                if (lastActivity != null
+                        && now - lastActivity > idleTimeoutSeconds * 1000L) {
+                    log.warn("WebSocket 空闲超时，关闭连接，userId = {}，sessionId = {}",
+                            userId, session.getId());
+                    try {
+                        session.close(CloseStatus.GOING_AWAY);
+                    } catch (IOException e) {
+                        log.warn("关闭空闲连接失败，sessionId = {}", session.getId());
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * 连接级令牌桶限流器：每秒补充 rate 个令牌，桶容量 burst（允许瞬时突发）。
+     * 仅在单连接内使用，synchronized 成本可忽略。
+     */
+    private static final class ChatRateLimiter {
+        private final double rate;
+        private final double burst;
+        private double tokens;
+        private long lastRefillNanos;
+
+        ChatRateLimiter(int rate, int burst) {
+            this.rate = rate;
+            this.burst = burst;
+            this.tokens = burst;
+            this.lastRefillNanos = System.nanoTime();
+        }
+
+        synchronized boolean tryAcquire() {
+            long now = System.nanoTime();
+            tokens = Math.min(burst, tokens + (now - lastRefillNanos) / 1e9 * rate);
+            lastRefillNanos = now;
+            if (tokens >= 1) {
+                tokens -= 1;
+                return true;
+            }
             return false;
         }
     }

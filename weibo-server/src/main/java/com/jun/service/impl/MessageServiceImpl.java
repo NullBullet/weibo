@@ -10,6 +10,7 @@ import com.jun.entity.Conversation;
 import com.jun.entity.ConversationUser;
 import com.jun.entity.PrivateMessage;
 import com.jun.entity.User;
+import com.jun.exception.AccountNotFoundException;
 import com.jun.exception.MessageSendPermissionDeniedException;
 import com.jun.exception.SessionNotFoundException;
 import com.jun.mapper.MessageMapper;
@@ -47,6 +48,16 @@ public class MessageServiceImpl implements MessageService {
     @Override
     public Result getOrCreatConversation(Long targetUserId) {
         Long currentUserId = BaseContext.getCurrentId();
+
+        // 不允许与自己建立会话
+        if (targetUserId == null || targetUserId.equals(currentUserId)) {
+            throw new IllegalArgumentException("目标用户不合法");
+        }
+
+        // 目标用户必须真实存在，避免为不存在的用户创建空会话脏数据
+        if (usersMapper.getUserInfoByUserId(targetUserId) == null) {
+            throw new AccountNotFoundException("目标用户不存在");
+        }
 
         // 1. 用户 ID 排序
         Long user1 = Math.min(currentUserId, targetUserId);
