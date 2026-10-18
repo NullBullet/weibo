@@ -32,6 +32,9 @@ import java.util.Objects;
 @Service
 public class MessageServiceImpl implements MessageService {
 
+    /** 历史消息单页条数上限，防止超大 pageSize 一次拉取过多数据 */
+    private static final int MAX_PAGE_SIZE = 100;
+
     @Resource
     private MessageMapper messageMapper;
     @Resource
@@ -90,10 +93,9 @@ public class MessageServiceImpl implements MessageService {
     @Override
     public Result getConversationDetail(Long conversationId) {
         Long userId = BaseContext.getCurrentId();
-        Conversation conv = messageMapper.selectConversationById(conversationId);
-        if (conv == null) {
-            return Result.error("会话不存在");
-        }
+
+        // 越权防护：仅会话成员可查看会话详情
+        Conversation conv = getConversationForCurrentUser(conversationId, userId);
 
         // 确定对方用户 ID
         Long otherUserId = conv.getUser1Id().equals(userId) ? conv.getUser2Id() : conv.getUser1Id();
@@ -113,8 +115,15 @@ public class MessageServiceImpl implements MessageService {
 
     @Override
     public Result getHistory(MessageQueryDTO dto) {
-        Integer page = dto.getPage() != null ? dto.getPage() : 1;
-        Integer pageSize = dto.getPageSize() != null ? dto.getPageSize() : 20;
+        Long currentUserId = BaseContext.getCurrentId();
+
+        // 越权防护：仅会话成员可读取历史消息
+        getConversationForCurrentUser(dto.getConversationId(), currentUserId);
+
+        // 服务端归一化分页参数：非法值回退默认值，并强制单页上限
+        int page = dto.getPage() != null && dto.getPage() > 0 ? dto.getPage() : 1;
+        int pageSize = dto.getPageSize() != null && dto.getPageSize() > 0 ? dto.getPageSize() : 20;
+        pageSize = Math.min(pageSize, MAX_PAGE_SIZE);
 
         PageHelper.startPage(page, pageSize);
         Page<MessageVO> pageResult = messageMapper.selectMessagesByPage(dto.getConversationId());
@@ -255,6 +264,20 @@ public class MessageServiceImpl implements MessageService {
         chatWebSocketHandler.sendUnreadCount(userId,userUnReadCount);
 
         return Result.success();
+    }
+
+    /**
+     * 查询会话并校验当前用户是否为会话成员（user1Id 或 user2Id）。
+     * 会话不存在与无权访问统一按"会话不存在"处理，避免向非成员泄露他人会话的存在性。
+     */
+    private Conversation getConversationForCurrentUser(Long conversationId, Long currentUserId) {
+        Conversation conv = messageMapper.selectConversationById(conversationId);
+        if (conv == null
+                || (!conv.getUser1Id().equals(currentUserId)
+                    && !conv.getUser2Id().equals(currentUserId))) {
+            throw new SessionNotFoundException("会话不存在");
+        }
+        return conv;
     }
 
     /**
