@@ -35,11 +35,13 @@ public interface MessageMapper {
     void insertConversationUser(ConversationUser conversationUser);
 
     void incrementUnreadCount(@Param("conversationId") Long conversationId,
-                              @Param("userId") Long userId);
+                              @Param("userId") Long userId,
+                              @Param("messageId") Long messageId);
 
-    void resetUnreadCount(@Param("conversationId") Long conversationId,
-                          @Param("userId") Long userId,
-                          @Param("lastReadMessageId") Long lastReadMessageId);
+    void decreaseUnreadCount(@Param("conversationId") Long conversationId,
+                             @Param("userId") Long userId,
+                             @Param("markedCount") int markedCount,
+                             @Param("lastMessageId") Long lastMessageId);
 
     List<Long> getUserUnReadCount(Long userId);
     // ==================== PrivateMessage ====================
@@ -48,8 +50,9 @@ public interface MessageMapper {
 
     Page<MessageVO> selectMessagesByPage(@Param("conversationId") Long conversationId);
 
-    void updateMessagesRead(@Param("conversationId") Long conversationId,
-                            @Param("userId") Long userId);
+    int updateMessagesRead(@Param("conversationId") Long conversationId,
+                           @Param("userId") Long userId,
+                           @Param("lastMessageId") Long lastMessageId);
 
     @Select("select id from private_message where conversation_id = #{conversationId} order by create_time desc limit 1")
     Long selectLatestMessageId(@Param("conversationId") Long conversationId);

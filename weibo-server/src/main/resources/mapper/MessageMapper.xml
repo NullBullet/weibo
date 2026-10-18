@@ -46,12 +46,17 @@
         update conversation_user
         set unread_count = unread_count + 1
         where conversation_id = #{conversationId} and user_id = #{userId}
+          and (last_read_message_id is null or last_read_message_id &lt; #{messageId})
     </update>
 
-    <update id="resetUnreadCount">
+    <!-- 原子递减未读数（替代无条件清零）：减去本次标记已读的条数，
+         last_read_message_id 单调推进，避免与并发 incrementUnreadCount 的 +1 互相覆盖丢计数 -->
+    <update id="decreaseUnreadCount">
         update conversation_user
-        set unread_count = 0, last_read_message_id = #{lastReadMessageId}
+        set unread_count = greatest(unread_count - #{markedCount}, 0),
+            last_read_message_id = #{lastMessageId}
         where conversation_id = #{conversationId} and user_id = #{userId}
+          and (last_read_message_id is null or last_read_message_id &lt; #{lastMessageId})
     </update>
 
     <!-- ==================== PrivateMessage ==================== -->
@@ -61,10 +66,13 @@
         values (#{conversationId}, #{senderId}, #{receiverId}, #{content}, #{createTime},#{clientMessageId})
     </insert>
 
+    <!-- 只标记已读基准点之前（id <= lastMessageId）的未读消息，
+         返回标记条数供 decreaseUnreadCount 精确抵消 -->
     <update id="updateMessagesRead">
         update private_message
         set is_read = 1
         where conversation_id = #{conversationId} and receiver_id = #{userId} and is_read = 0
+          and id &lt;= #{lastMessageId}
     </update>
 
     <select id="selectMessagesByPage" resultType="com.jun.vo.MessageVO">

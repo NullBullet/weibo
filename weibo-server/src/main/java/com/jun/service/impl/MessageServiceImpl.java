@@ -224,9 +224,11 @@ public class MessageServiceImpl implements MessageService {
                 now
         );
 
+        // 增量 +1（条件：新消息位于已读位置之后），与 read 的递减操作可交换，并发下不丢计数
         messageMapper.incrementUnreadCount(
                 conversationId,
-                receiverId
+                receiverId,
+                messageId
         );
 
         ChatMessageVO vo = new ChatMessageVO();
@@ -249,19 +251,28 @@ public class MessageServiceImpl implements MessageService {
         return unReadList.stream().mapToLong(Long::longValue).sum();
     }
 
+    @Transactional
     @Override
     public Result read(MessageReadDTO messageReadDTO) {
         Long userId = BaseContext.getCurrentId();
 
         Long conversationId = messageReadDTO.getConversationId();
-        // 1. 标记消息已读
-        messageMapper.updateMessagesRead(conversationId, userId);
 
-        // 2. 获取最后一条消息 ID
+        // 1. 以当前时刻的最大消息 ID 作为本次已读基准点
         Long latestMsgId = messageMapper.selectLatestMessageId(conversationId);
 
-        // 3. 清空未读数
-        messageMapper.resetUnreadCount(conversationId, userId, latestMsgId);
+        // 会话内暂无消息，无需标记
+        if (latestMsgId == null) {
+            return Result.success();
+        }
+
+        // 2. 标记基准点之前的消息已读，并记录本次标记条数
+        int markedCount = messageMapper.updateMessagesRead(conversationId, userId, latestMsgId);
+
+        // 3. 原子递减未读数（而非无条件清零）：减去本次标记的条数；
+        //    last_read_message_id 单调推进，重复/并发 read 不会二次递减，
+        //    与 saveMessage 的条件化 +1 可交换，新消息并发到达时计数不丢失
+        messageMapper.decreaseUnreadCount(conversationId, userId, markedCount, latestMsgId);
 
         // 未读消息数量推送
         Long userUnReadCount = messageService.getUserUnReadCount(userId);
