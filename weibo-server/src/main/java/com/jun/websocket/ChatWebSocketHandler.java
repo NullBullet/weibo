@@ -21,8 +21,10 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 @Slf4j
 @Component
@@ -33,8 +35,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     @Resource
     private MessageService messageService;
 
-    // userId -> WebSocketSession
-    private final Map<Long, WebSocketSession> safeOnlineUsers = new ConcurrentHashMap<>();
+    // userId -> 该用户的活跃连接列表（支持同一用户多标签页同时在线，推送广播到全部连接）
+    private final Map<Long, List<WebSocketSession>> safeOnlineUsers = new ConcurrentHashMap<>();
 
     // 客户端连接成功时执行
     @Override
@@ -48,7 +50,12 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                         session, 10_000, 512 * 1024
                 );
 
-        safeOnlineUsers.put(userId, safeSession);
+        // 把包装器引用存入会话属性：当前请求的响应始终路由回发起它的连接，
+        // 不受连接映射后续变化的影响，同时复用装饰器的并发发送保护
+        session.getAttributes().put("safeSession", safeSession);
+
+        safeOnlineUsers.computeIfAbsent(userId, k -> new CopyOnWriteArrayList<>())
+                .add(safeSession);
 
         log.info("用户 {} WebSocket连接成功",userId);
         log.info("sessionId = {}",safeSession.getId());
@@ -64,7 +71,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         // 1. 获取发送者
         Long senderId = (Long) session.getAttributes().get("userId");
 
-        WebSocketSession senderSession = safeOnlineUsers.get(senderId);
+        // 响应路由：使用发起当前请求的连接自己的包装器（PONG/ERROR/ACK 只回到该连接），
+        // 不从映射中按 userId 查找，避免同用户多连接时响应发到别的连接；
+        // 装饰器在连接建立时已存入会话属性，发送仍受并发保护
+        WebSocketSession senderSession = (WebSocketSession) session.getAttributes().get("safeSession");
 
         // 2. 解析消息
         ChatMessageDTO chatMessage;
@@ -148,24 +158,27 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        // 4. 根据服务器计算出的 receiverId 找接收者
-        WebSocketSession targetSession =
+        // 4. 推送给接收者的所有在线连接（多标签页同时在线时每个连接都能收到）
+        List<WebSocketSession> targetSessions =
                 safeOnlineUsers.get(messageVO.getReceiverId());
 
         // 5. 接收者在线
-        if (targetSession != null
-                && targetSession.isOpen()) {
+        if (targetSessions != null && !targetSessions.isEmpty()) {
 
             // 6. 把完整消息对象转换成 JSON
             String json = objectMapper.writeValueAsString(messageVO);
 
-            // 7. 推送给接收者；推送失败不影响已持久化的消息和已增加的未读数，
-            //    也不应中断发送者的处理流程（此前异常上抛会误关发送者连接）
-            sendMessageQuietly(targetSession, new TextMessage(json), "NEW_MESSAGE");
+            // 7. 推送给接收者的每个活跃连接；单个连接推送失败不影响已持久化的消息
+            //    和已增加的未读数，也不应中断发送者的处理流程
+            for (WebSocketSession targetSession : targetSessions) {
+                if (targetSession.isOpen()) {
+                    sendMessageQuietly(targetSession, new TextMessage(json), "NEW_MESSAGE");
+                }
+            }
 
             // 未读消息数量推送
             Long userUnReadCount = messageService.getUserUnReadCount(messageVO.getReceiverId());
-            sendUnreadCount(targetSession,userUnReadCount);
+            sendUnreadCount(targetSessions,userUnReadCount);
 
             // 日志脱敏：不输出私信正文，仅保留 ID 与内容长度用于排查
             log.info(
@@ -192,20 +205,32 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         Long userId = (Long) session.getAttributes().get("userId");
 
-        // 只有关闭的连接仍是当前登记的连接时，才删除映射
-        safeOnlineUsers.computeIfPresent(userId, (id, onlineSession) ->
-                onlineSession.getId().equals(session.getId())
-                        ? null              // 关闭的就是登记中的连接
-                        : onlineSession     // 关闭的是旧连接，保留有效连接
-        );
+        // 只移除当前关闭的这个连接（按 sessionId 精确匹配），
+        // 同一用户的其他连接（如另一个标签页）不受影响
+        List<WebSocketSession> sessions = safeOnlineUsers.get(userId);
+        if (sessions != null) {
+            sessions.removeIf(s -> s.getId().equals(session.getId()));
+            if (sessions.isEmpty()) {
+                safeOnlineUsers.remove(userId, sessions);
+            }
+        }
 
         log.info("WebSocket连接关闭，用户：{}，sessionId = {}",userId,session.getId());
     }
 
     // 根据 userId 查找 Session，适用于 HTTP 请求等场景
     public void sendUnreadCount(Long userId, Long count) {
-        WebSocketSession session = safeOnlineUsers.get(userId);
-        sendUnreadCount(session, count);
+        List<WebSocketSession> sessions = safeOnlineUsers.get(userId);
+        if (sessions != null) {
+            sendUnreadCount(sessions, count);
+        }
+    }
+
+    // 向指定 Session 列表发送，适用于已经获取 targetSessions 的场景
+    public void sendUnreadCount(List<WebSocketSession> sessions, Long count) {
+        for (WebSocketSession session : sessions) {
+            sendUnreadCount(session, count);
+        }
     }
 
     // 向指定 Session 发送，适用于已经获取 targetSession 的场景
