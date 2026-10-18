@@ -72,6 +72,13 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     ChatMessageDTO.class
             );
 
+            // JSON 字面量 "null" 反序列化结果为 null 而不是抛异常，按协议级错误处理
+            if (chatMessage == null) {
+                log.warn("WebSocket 收到 JSON null，userId={}", session.getAttributes().get("userId"));
+                sendError(senderSession, "消息格式错误", null);
+                return;
+            }
+
             // 2.2 消息类型校验
             String type = chatMessage.getType();
             if (!"PING".equals(type) && !"CHAT".equals(type)) {
