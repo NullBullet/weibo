@@ -10,6 +10,7 @@ import com.jun.result.Result;
 import com.jun.result.ScrollResult;
 import com.jun.service.HomeService;
 import com.jun.service.RewardService;
+import com.jun.utils.PostStatsHelper;
 import com.jun.vo.ExtensionVO;
 import com.jun.vo.HotStatusVO;
 import com.jun.vo.UserVO;
@@ -41,6 +42,8 @@ public class HomeServiceImpl implements HomeService {
     private RedisTemplate redisTemplate;
     @Resource
     private RewardService rewardService;
+    @Resource
+    private PostStatsHelper postStatsHelper;
 
     @Override
     public Result getLatestPosts(HomeQueryDTO homeQueryDTO) {
@@ -440,21 +443,18 @@ public class HomeServiceImpl implements HomeService {
             }
         }
 
-        List<Object> statsList = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-            for (Long id : originalIds)
-                connection.hashCommands().hGetAll((POST_STATS_KEY + id).getBytes());
-            return null;
-        });
+        //4. 批量填充实时统计（miss 时从数据库重建）
+        List<Map<Object, Object>> statsList = postStatsHelper.getStatsBatch(originalIds);
         for (int i = 0; i < originalIds.size(); i++) {
             Long id = originalIds.get(i);
             HotStatusVO vo = originalMap.get(id);
             if (vo == null) continue;
-            Object obj = statsList.get(i);
-            if (obj instanceof Map<?, ?> stats) {
-                vo.setAttitudesCount(parseStatBytes(stats, "likeCount"));
-                vo.setCommentsCount(parseStatBytes(stats, "commentCount"));
-                vo.setRepostsCount(parseStatBytes(stats, "forwardCount"));
-                vo.setViewsCount(parseStatBytes(stats, "viewCount"));
+            Map<Object, Object> stats = statsList.get(i);
+            if (stats != null) {
+                vo.setAttitudesCount(PostStatsHelper.getInt(stats, "likeCount"));
+                vo.setCommentsCount(PostStatsHelper.getInt(stats, "commentCount"));
+                vo.setRepostsCount(PostStatsHelper.getInt(stats, "forwardCount"));
+                vo.setViewsCount(PostStatsHelper.getInt(stats, "viewCount"));
             }
         }
 
@@ -482,19 +482,17 @@ public class HomeServiceImpl implements HomeService {
     }
 
     private void fillPostStats(HotStatusVO vo) {
-        String statsKey = POST_STATS_KEY + vo.getId();
-        Object likeObj = redisTemplate.opsForHash().get(statsKey, "likeCount");
-        Object commentObj = redisTemplate.opsForHash().get(statsKey, "commentCount");
-        Object forwardObj = redisTemplate.opsForHash().get(statsKey, "forwardCount");
-        Object viewObj = redisTemplate.opsForHash().get(statsKey, "viewCount");
-        vo.setAttitudesCount(likeObj == null ? 0 : Integer.parseInt(likeObj.toString()));
-        vo.setCommentsCount(commentObj == null ? 0 : Integer.parseInt(commentObj.toString()));
-        vo.setRepostsCount(forwardObj == null ? 0 : Integer.parseInt(forwardObj.toString()));
-        vo.setViewsCount(viewObj == null ? 0 : Integer.parseInt(viewObj.toString()));
-    }
-
-    private int parseStatBytes(Map<?, ?> stats, String field) {
-        Object val = stats.get(field.getBytes());
-        return val == null ? 0 : Integer.parseInt(new String((byte[]) val));
+        Map<Object, Object> stats = postStatsHelper.getStats(vo.getId());
+        if (stats == null) {
+            vo.setAttitudesCount(0);
+            vo.setCommentsCount(0);
+            vo.setRepostsCount(0);
+            vo.setViewsCount(0);
+            return;
+        }
+        vo.setAttitudesCount(PostStatsHelper.getInt(stats, "likeCount"));
+        vo.setCommentsCount(PostStatsHelper.getInt(stats, "commentCount"));
+        vo.setRepostsCount(PostStatsHelper.getInt(stats, "forwardCount"));
+        vo.setViewsCount(PostStatsHelper.getInt(stats, "viewCount"));
     }
 }

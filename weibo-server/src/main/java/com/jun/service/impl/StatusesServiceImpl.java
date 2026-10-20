@@ -23,6 +23,7 @@ import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static com.jun.constant.MessageConstant.STATUS_PUBLISH_FAIL;
 import static com.jun.constant.RedisConstants.*;
@@ -69,6 +70,7 @@ public class StatusesServiceImpl implements StatusesService {
         long createTime = saveStatusVO.getCreatedAt().toEpochSecond(ZoneOffset.UTC);
         map.put("createTime", createTime);
         redisTemplate.opsForHash().putAll(postStatsKey,map);
+        redisTemplate.expire(postStatsKey, POST_STATS_TTL, TimeUnit.SECONDS);
 
         String userPostIdsKey = USER_POST_IDS_KEY + userId;
         redisTemplate.opsForZSet().add(userPostIdsKey,statusId.toString(),createTime);

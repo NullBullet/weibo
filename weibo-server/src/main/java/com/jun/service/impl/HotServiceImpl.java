@@ -12,6 +12,7 @@ import com.jun.vo.HotTopicVO;
 import com.jun.vo.StatusVO;
 import com.jun.mapper.HotMapper;
 import com.jun.service.HotService;
+import com.jun.utils.PostStatsHelper;
 import com.jun.vo.UserVO;
 import jakarta.annotation.Resource;
 import org.springframework.data.redis.connection.RedisStringCommands;
@@ -35,6 +36,8 @@ public class HotServiceImpl implements HotService {
     private RedisTemplate redisTemplate;
     @Resource
     private RewardService rewardService;
+    @Resource
+    private PostStatsHelper postStatsHelper;
 
     @Override
     public Result<List<HotTopicVO>> topics(Integer size) {
@@ -423,15 +426,8 @@ public class HotServiceImpl implements HotService {
             }
         }
 
-        //4. 批量填充实时统计
-        List<Object> statsList = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-            for (Long id : originalIds) {
-                connection.hashCommands().hGetAll(
-                        (POST_STATS_KEY + id).getBytes()
-                );
-            }
-            return null;
-        });
+        //4. 批量填充实时统计（miss 时从数据库重建）
+        List<Map<Object, Object>> statsList = postStatsHelper.getStatsBatch(originalIds);
 
         for (int i = 0; i < originalIds.size(); i++) {
 
@@ -443,22 +439,17 @@ public class HotServiceImpl implements HotService {
                 continue;
             }
 
-            Object obj = statsList.get(i);
+            Map<Object, Object> stats = statsList.get(i);
 
-            if (obj instanceof Map<?, ?> stats) {
+            if (stats != null) {
 
-                Object likeObj = stats.get("likeCount".getBytes());
-                Object commentObj = stats.get("commentCount".getBytes());
-                Object repostObj = stats.get("forwardCount".getBytes());
-                Object viewObj = stats.get("viewCount".getBytes());
+                vo.setAttitudesCount(PostStatsHelper.getInt(stats, "likeCount"));
 
-                vo.setAttitudesCount(likeObj == null ? 0 : Integer.parseInt(new String((byte[]) likeObj)));
+                vo.setCommentsCount(PostStatsHelper.getInt(stats, "commentCount"));
 
-                vo.setCommentsCount(commentObj == null ? 0 : Integer.parseInt(new String((byte[]) commentObj)));
+                vo.setRepostsCount(PostStatsHelper.getInt(stats, "forwardCount"));
 
-                vo.setRepostsCount(repostObj == null ? 0 : Integer.parseInt(new String((byte[]) repostObj)));
-
-                vo.setViewsCount(viewObj == null ? 0 : Integer.parseInt(new String((byte[]) viewObj)));
+                vo.setViewsCount(PostStatsHelper.getInt(stats, "viewCount"));
             }
         }
 
@@ -514,16 +505,19 @@ public class HotServiceImpl implements HotService {
     }
 
     private void fillPostStats(HotStatusVO vo) {
-        String statsKey = POST_STATS_KEY + vo.getId();
+        Map<Object, Object> stats = postStatsHelper.getStats(vo.getId());
 
-        Object likeObj = redisTemplate.opsForHash().get(statsKey, "likeCount");
-        Object commentObj = redisTemplate.opsForHash().get(statsKey, "commentCount");
-        Object forwardObj = redisTemplate.opsForHash().get(statsKey, "forwardCount");
-        Object viewObj = redisTemplate.opsForHash().get(statsKey, "viewCount");
+        if (stats == null) {
+            vo.setAttitudesCount(0);
+            vo.setCommentsCount(0);
+            vo.setRepostsCount(0);
+            vo.setViewsCount(0);
+            return;
+        }
 
-        vo.setAttitudesCount(likeObj == null ? 0 : Integer.parseInt(likeObj.toString()));
-        vo.setCommentsCount(commentObj == null ? 0 : Integer.parseInt(commentObj.toString()));
-        vo.setRepostsCount(forwardObj == null ? 0 : Integer.parseInt(forwardObj.toString()));
-        vo.setViewsCount(viewObj == null ? 0 : Integer.parseInt(viewObj.toString()));
+        vo.setAttitudesCount(PostStatsHelper.getInt(stats, "likeCount"));
+        vo.setCommentsCount(PostStatsHelper.getInt(stats, "commentCount"));
+        vo.setRepostsCount(PostStatsHelper.getInt(stats, "forwardCount"));
+        vo.setViewsCount(PostStatsHelper.getInt(stats, "viewCount"));
     }
 }

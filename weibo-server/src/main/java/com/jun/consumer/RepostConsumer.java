@@ -79,6 +79,7 @@ public class RepostConsumer {
             map.put("forwardCount", 0);
             map.put("createTime", createTimeStamp);
             redisTemplate.opsForHash().putAll(statsKey, map);
+            redisTemplate.expire(statsKey, POST_STATS_TTL, TimeUnit.SECONDS);
 
             // 4. 原微博 reposts_count +1
             postMapper.updateStatusRepostCount(1, message.getOriginalStatusId());

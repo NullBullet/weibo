@@ -15,6 +15,7 @@ import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.result.ScrollResult;
 import com.jun.utils.OssUtil;
+import com.jun.utils.PostStatsHelper;
 import com.jun.vo.ExtensionVO;
 import com.jun.vo.FollowUserVO;
 import com.jun.vo.StatusVO;
@@ -56,6 +57,8 @@ public class UsersServiceImpl implements UsersService {
     private RedisTemplate redisTemplate;
     @Resource
     private RewardService rewardService;
+    @Resource
+    private PostStatsHelper postStatsHelper;
 
     @Override
     public Result<UsersInfoVO> me() {
@@ -272,52 +275,27 @@ public class UsersServiceImpl implements UsersService {
         // 再填充转发原微博（仅用于本次响应，不写缓存）
         fillOriginalStatus(finalList);
 
-        //6. 获取即时点赞数
+        //6. 获取即时统计（miss 时从数据库重建）
         for (StatusVO vo : finalList) {
-            String statsKey = POST_STATS_KEY + vo.getId();
 
-            // 点赞数
-            Object likeObj = redisTemplate.opsForHash().get(statsKey, "likeCount");
+            Map<Object, Object> stats = postStatsHelper.getStats(vo.getId());
 
-            // 评论数
-            Object commentObj = redisTemplate.opsForHash().get(statsKey, "commentCount");
-
-            // 转发数
-            Object forwardObj = redisTemplate.opsForHash().get(statsKey, "forwardCount");
-
-            // 浏览数（后面实现）
-            Object viewObj = redisTemplate.opsForHash().get(statsKey, "viewCount");
-
-
-            if (likeObj != null) {
-                // 从 Hash 中获取实时点赞数
-                vo.setAttitudesCount(Integer.parseInt(likeObj.toString()));
+            if (stats != null) {
+                vo.setAttitudesCount(PostStatsHelper.getInt(stats, "likeCount"));
+                vo.setCommentsCount(PostStatsHelper.getInt(stats, "commentCount"));
+                vo.setRepostsCount(PostStatsHelper.getInt(stats, "forwardCount"));
+                vo.setViewsCount(PostStatsHelper.getInt(stats, "viewCount"));
             } else {
-                // 如果 Redis 里没计数（比如刚发布的微博）
+                // 帖子不存在（缓存与库均无），保持原有兜底行为
                 if (vo.getAttitudesCount() == null) {
                     vo.setAttitudesCount(0);
                 }
-            }
-
-            if (commentObj != null) {
-                vo.setCommentsCount(Integer.parseInt(commentObj.toString()));
-            } else {
                 if (vo.getCommentsCount() == null) {
                     vo.setCommentsCount(0);
                 }
-            }
-
-            if (forwardObj != null) {
-                vo.setRepostsCount(Integer.parseInt(forwardObj.toString()));
-            } else {
                 if (vo.getRepostsCount() == null) {
                     vo.setRepostsCount(0);
                 }
-            }
-
-            if (viewObj != null) {
-                vo.setViewsCount(Integer.parseInt(viewObj.toString()));
-            } else {
                 vo.setViewsCount(0);
             }
 
@@ -326,57 +304,22 @@ public class UsersServiceImpl implements UsersService {
 
             if (originalStatus != null) {
 
-                String originalStatsKey =
-                        POST_STATS_KEY + originalStatus.getId();
-
                 Map<Object, Object> originalStats =
-                        redisTemplate.opsForHash().entries(originalStatsKey);
+                        postStatsHelper.getStats(originalStatus.getId());
 
-                if (originalStats != null && !originalStats.isEmpty()) {
+                if (originalStats != null) {
 
-                    Object originalLikeObj =
-                            originalStats.get("likeCount");
+                    originalStatus.setAttitudesCount(
+                            PostStatsHelper.getInt(originalStats, "likeCount"));
 
-                    Object originalCommentObj =
-                            originalStats.get("commentCount");
+                    originalStatus.setCommentsCount(
+                            PostStatsHelper.getInt(originalStats, "commentCount"));
 
-                    Object originalForwardObj =
-                            originalStats.get("forwardCount");
+                    originalStatus.setRepostsCount(
+                            PostStatsHelper.getInt(originalStats, "forwardCount"));
 
-                    Object originalViewObj =
-                            originalStats.get("viewCount");
-
-                    if (originalLikeObj != null) {
-                        originalStatus.setAttitudesCount(
-                                Integer.parseInt(
-                                        originalLikeObj.toString()
-                                )
-                        );
-                    }
-
-                    if (originalCommentObj != null) {
-                        originalStatus.setCommentsCount(
-                                Integer.parseInt(
-                                        originalCommentObj.toString()
-                                )
-                        );
-                    }
-
-                    if (originalForwardObj != null) {
-                        originalStatus.setRepostsCount(
-                                Integer.parseInt(
-                                        originalForwardObj.toString()
-                                )
-                        );
-                    }
-
-                    if (originalViewObj != null) {
-                        originalStatus.setViewsCount(
-                                Integer.parseInt(
-                                        originalViewObj.toString()
-                                )
-                        );
-                    }
+                    originalStatus.setViewsCount(
+                            PostStatsHelper.getInt(originalStats, "viewCount"));
                 }
             }
         }
@@ -893,17 +836,20 @@ public class UsersServiceImpl implements UsersService {
     }
 
     private void fillPostStats(StatusVO vo) {
-        String statsKey = POST_STATS_KEY + vo.getId();
+        Map<Object, Object> stats = postStatsHelper.getStats(vo.getId());
 
-        Object likeObj = redisTemplate.opsForHash().get(statsKey, "likeCount");
-        Object commentObj = redisTemplate.opsForHash().get(statsKey, "commentCount");
-        Object forwardObj = redisTemplate.opsForHash().get(statsKey, "forwardCount");
-        Object viewObj = redisTemplate.opsForHash().get(statsKey, "viewCount");
+        if (stats == null) {
+            vo.setAttitudesCount(0);
+            vo.setCommentsCount(0);
+            vo.setRepostsCount(0);
+            vo.setViewsCount(0);
+            return;
+        }
 
-        vo.setAttitudesCount(likeObj == null ? 0 : Integer.parseInt(likeObj.toString()));
-        vo.setCommentsCount(commentObj == null ? 0 : Integer.parseInt(commentObj.toString()));
-        vo.setRepostsCount(forwardObj == null ? 0 : Integer.parseInt(forwardObj.toString()));
-        vo.setViewsCount(viewObj == null ? 0 : Integer.parseInt(viewObj.toString()));
+        vo.setAttitudesCount(PostStatsHelper.getInt(stats, "likeCount"));
+        vo.setCommentsCount(PostStatsHelper.getInt(stats, "commentCount"));
+        vo.setRepostsCount(PostStatsHelper.getInt(stats, "forwardCount"));
+        vo.setViewsCount(PostStatsHelper.getInt(stats, "viewCount"));
     }
 
     @Override

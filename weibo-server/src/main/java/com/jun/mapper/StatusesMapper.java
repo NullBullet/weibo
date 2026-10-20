@@ -4,6 +4,7 @@ import com.jun.dto.StatusesImageDTO;
 import com.jun.entity.Statuses;
 import com.jun.vo.SaveStatusVO;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.MapKey;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
@@ -28,4 +29,10 @@ public interface StatusesMapper {
 
     @Select("select user_id from statuses where id = #{statusId}")
     Long getUserIdByStatusId(@Param("statusId") Long statusId);
+
+    /**
+     * 按 id 批量查询帖子统计列（用于 post:stats 缓存重建）
+     */
+    @MapKey("id")
+    List<Statuses> selectStatsByIds(@Param("ids") List<Long> ids);
 }
