@@ -16,6 +16,7 @@ import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.service.CommentsService;
 import com.jun.utils.HotScoreCalculator;
+import com.jun.utils.PostStatsHelper;
 import com.jun.vo.CommentVO;
 import com.jun.vo.ReplyCountVO;
 import com.jun.vo.ToggleLikeVO;
@@ -54,6 +55,8 @@ public class CommentsServiceImpl implements CommentsService {
     private RedisTemplate redisTemplate;
     @Resource
     private RabbitTemplate rabbitTemplate;
+    @Resource
+    private PostStatsHelper postStatsHelper;
 
     // ======================== 评论点赞 ========================
 
@@ -185,14 +188,18 @@ public class CommentsServiceImpl implements CommentsService {
             commentsMapper.softDeleteRepliesByParentId(commentId);
         }
 
-        //6. DB: statuses.comments_count 扣减
+        //6. 防御：缓存缺失时先重建（必须在 DB 扣减之前——
+        // 否则同事务内 selectStatsByIds 能读到未提交的扣减后值，重建基线错误导致双重扣减）
+        postStatsHelper.ensureStats(statusId);
+
+        //7. DB: statuses.comments_count 扣减
         commentsMapper.decreaseStatusCommentCount(statusId, deleteCount);
 
-        //7. Redis: 评论计数扣减
+        //8. Redis: 评论计数扣减
         String statsKey = POST_STATS_KEY + statusId;
         redisTemplate.opsForHash().increment(statsKey, "commentCount", -deleteCount);
 
-        //8. 删除评论列表缓存
+        //9. 删除评论列表缓存
         deleteCommentListCache(statusId);
         if (comment.getParentId() != null) {
             deleteReplyListCache(comment.getParentId());
@@ -249,7 +256,8 @@ public class CommentsServiceImpl implements CommentsService {
         // DB：同步插入评论，获取自增 ID（后续 MQ 通知需要 commentId）
         commentsMapper.saveComment(comment);
 
-        // Redis 操作同步执行
+        // Redis 操作同步执行（防御：缓存缺失时先重建，避免 HINCRBY 创建残缺 hash）
+        postStatsHelper.ensureStats(statusId);
         String statsKey = POST_STATS_KEY + statusId;
         redisTemplate.opsForHash().increment(statsKey, "commentCount", 1);
 

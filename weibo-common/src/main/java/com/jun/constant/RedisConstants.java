@@ -14,6 +14,10 @@ public class RedisConstants {
     public static final String POST_STATS_KEY = "post:stats:";
     //帖子统计缓存 TTL：7 天（秒），初始化写入，业务访问时刷新
     public static final Long POST_STATS_TTL = 7 * 24 * 60 * 60L;
+    //帖子统计重建分布式锁  post:stats:lock:{postId}
+    public static final String POST_STATS_LOCK_KEY = "post:stats:lock:";
+    //重建锁过期时间（秒），防止持锁端宕机导致死锁
+    public static final long POST_STATS_LOCK_TTL_SECONDS = 30L;
     //热度排序
     public static final String HOT_POST_ZSET_KEY = "hot:post:zset";
     //热榜候选池
