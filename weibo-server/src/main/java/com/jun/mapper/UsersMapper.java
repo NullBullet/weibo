@@ -4,6 +4,7 @@ import com.github.pagehelper.Page;
 import com.jun.dto.StatusPageQueryDTO;
 import com.jun.dto.UserProfileDTO;
 import com.jun.entity.StatusImage;
+import com.jun.entity.Statuses;
 import com.jun.entity.User;
 import com.jun.entity.UserStatistics;
 import com.jun.vo.FollowUserVO;
@@ -57,4 +58,7 @@ public interface UsersMapper {
     List<StatusVO> getPostByMissIds(List<Long> missIds);
 
     List<StatusVO> getPostByIds(List<Long> originalIds);
+
+    @Select("select id, created_at from statuses where user_id = #{userId} and is_deleted = 0 order by created_at desc")
+    List<Statuses> getUserPostIdScores(@Param("userId") Long userId);
 }

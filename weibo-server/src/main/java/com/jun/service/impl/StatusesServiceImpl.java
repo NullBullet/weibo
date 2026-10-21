@@ -10,6 +10,7 @@ import com.jun.mq.message.DeletePostMessage;
 import com.jun.mq.message.FeedMessage;
 import com.jun.result.Result;
 import com.jun.service.StatusesService;
+import com.jun.utils.UserPostIdsHelper;
 import com.jun.vo.SaveStatusVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +39,8 @@ public class StatusesServiceImpl implements StatusesService {
     private RedisTemplate redisTemplate;
     @Resource
     private RabbitTemplate rabbitTemplate;
+    @Resource
+    private UserPostIdsHelper userPostIdsHelper;
 
     @Transactional
     @Override
@@ -72,8 +75,8 @@ public class StatusesServiceImpl implements StatusesService {
         redisTemplate.opsForHash().putAll(postStatsKey,map);
         redisTemplate.expire(postStatsKey, POST_STATS_TTL, TimeUnit.SECONDS);
 
-        String userPostIdsKey = USER_POST_IDS_KEY + userId;
-        redisTemplate.opsForZSet().add(userPostIdsKey,statusId.toString(),createTime);
+        // 条件写：key 存在则增量维护，缺失则全量重建（避免半截快照导致主页缺历史微博）
+        userPostIdsHelper.addPost(userId, statusId, createTime);
 
         // MQ 异步推送粉丝收件箱
         FeedMessage feedMessage = FeedMessage.builder()

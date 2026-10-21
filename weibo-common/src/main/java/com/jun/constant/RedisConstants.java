@@ -31,6 +31,8 @@ public class RedisConstants {
 
     //用户微博id汇总
     public static final String USER_POST_IDS_KEY = "user:post:ids:";
+    //用户微博ID缓存 TTL：7 天（秒），写入/重建时设置，业务访问时刷新
+    public static final Long USER_POST_IDS_TTL = 7 * 24 * 60 * 60L;
     //微博详情
     public static final String POST_DETAIL_KEY = "post:detail:";
     public static final Long POST_DETAIL_TTL = 1800L;

@@ -16,6 +16,7 @@ import com.jun.result.Result;
 import com.jun.result.ScrollResult;
 import com.jun.utils.OssUtil;
 import com.jun.utils.PostStatsHelper;
+import com.jun.utils.UserPostIdsHelper;
 import com.jun.utils.UserStatsHelper;
 import com.jun.vo.ExtensionVO;
 import com.jun.vo.FollowUserVO;
@@ -62,6 +63,8 @@ public class UsersServiceImpl implements UsersService {
     private PostStatsHelper postStatsHelper;
     @Resource
     private UserStatsHelper userStatsHelper;
+    @Resource
+    private UserPostIdsHelper userPostIdsHelper;
 
     @Override
     public Result<UsersInfoVO> me() {
@@ -162,6 +165,8 @@ public class UsersServiceImpl implements UsersService {
             //1.1 为空则加载数据库和构建缓存
             return loadFromDbAndBuildCache(statusPageQueryDTO, userId, zsetKey);
         }
+        //1.2 命中续期，活跃用户的时间线缓存不过期
+        userPostIdsHelper.refreshTtl(zsetKey);
         List<Long> ids = idSet.stream()
                 .map(Long::valueOf)
                 .toList();
@@ -513,6 +518,9 @@ public class UsersServiceImpl implements UsersService {
             return null;
         });
 
+        // 重建后设置 TTL，防止过期键被重建后永久存活
+        userPostIdsHelper.refreshTtl(zsetKey);
+
         // 再填充转发原微博（仅用于本次响应，不写缓存）
         fillOriginalStatus(record);
 
@@ -648,8 +656,22 @@ public class UsersServiceImpl implements UsersService {
                                 pageSize
                         );
         if (tuples == null || tuples.isEmpty()) {
-            return Result.success(new ScrollResult(null, 0, Collections.emptyList()));
+            //2.1 缓存缺失（TTL 过期或丢失）时从数据库重建后重试，避免游标翻页静默为空
+            userPostIdsHelper.rebuild(userId);
+            tuples = redisTemplate.opsForZSet()
+                    .reverseRangeByScoreWithScores(
+                            zsetKey,
+                            Double.NEGATIVE_INFINITY,
+                            lastScore,
+                            offset,
+                            pageSize
+                    );
+            if (tuples == null || tuples.isEmpty()) {
+                return Result.success(new ScrollResult(null, 0, Collections.emptyList()));
+            }
         }
+        //2.2 命中续期，活跃用户的时间线缓存不过期
+        userPostIdsHelper.refreshTtl(zsetKey);
 
         List<Long> statusIds = tuples.stream()
                 .map(t -> Long.valueOf(t.getValue()))

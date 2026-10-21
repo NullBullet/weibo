@@ -4,6 +4,7 @@ import com.jun.config.RabbitMQConfig;
 import com.jun.entity.Statuses;
 import com.jun.mapper.PostMapper;
 import com.jun.mq.message.RepostMessage;
+import com.jun.utils.UserPostIdsHelper;
 import com.rabbitmq.client.Channel;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +34,8 @@ public class RepostConsumer {
     private RabbitTemplate rabbitTemplate;
     @Resource
     private RedisTemplate redisTemplate;
+    @Resource
+    private UserPostIdsHelper userPostIdsHelper;
 
     @RabbitListener(
             queues = RabbitMQConfig.REPOST_QUEUE,
@@ -66,9 +69,8 @@ public class RepostConsumer {
             Long forwardStatusId = forwardStatus.getId();
             long createTimeStamp = now.toEpochSecond(ZoneOffset.UTC);
 
-            // 2. 写入用户 timeline ZSET
-            String zsetKey = USER_POST_IDS_KEY + message.getUserId();
-            redisTemplate.opsForZSet().add(zsetKey, forwardStatusId.toString(), createTimeStamp);
+            // 2. 写入用户 timeline ZSET（条件写：缺失时全量重建，避免半截快照）
+            userPostIdsHelper.addPost(message.getUserId(), forwardStatusId, createTimeStamp);
 
             // 3. 初始化新转发微博的统计数据
             String statsKey = POST_STATS_KEY + forwardStatusId;
