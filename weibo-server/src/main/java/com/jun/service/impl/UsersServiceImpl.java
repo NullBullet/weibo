@@ -16,6 +16,7 @@ import com.jun.result.Result;
 import com.jun.result.ScrollResult;
 import com.jun.utils.OssUtil;
 import com.jun.utils.PostStatsHelper;
+import com.jun.utils.UserStatsHelper;
 import com.jun.vo.ExtensionVO;
 import com.jun.vo.FollowUserVO;
 import com.jun.vo.StatusVO;
@@ -59,6 +60,8 @@ public class UsersServiceImpl implements UsersService {
     private RewardService rewardService;
     @Resource
     private PostStatsHelper postStatsHelper;
+    @Resource
+    private UserStatsHelper userStatsHelper;
 
     @Override
     public Result<UsersInfoVO> me() {
@@ -590,43 +593,24 @@ public class UsersServiceImpl implements UsersService {
     }
 
     /**
-     * 从 Redis user:stats:{userId} Hash 实时获取关注数、粉丝数、获赞数，回填到 VO
+     * 从 Redis user:stats:{userId} 实时获取关注数、粉丝数、获赞数，回填到 VO。
+     * 缓存缺失/残缺时由 UserStatsHelper 从 user_statistics 重建（分布式锁 + HSETNX 补齐 + 7 天 TTL）。
      */
     private void fillUserStats(UsersInfoVO vo, Long userId) {
-        String statsKey = USER_STATS_KEY + userId;
+        Map<Object, Object> stats = userStatsHelper.getStats(userId);
 
-        Object followingObj = redisTemplate.opsForHash().get(statsKey, "followingCount");
-        Object fansObj = redisTemplate.opsForHash().get(statsKey, "followersCount");
-        Object likesObj = redisTemplate.opsForHash().get(statsKey, "likesCount");
-
-        int followingCount = followingObj == null ? 0 : Integer.parseInt(followingObj.toString());
-        int followersCount = fansObj == null ? 0 : Integer.parseInt(fansObj.toString());
-        int likesCount = likesObj == null ? 0 : Integer.parseInt(likesObj.toString());
-
-        // Redis 没有时 fallback DB，并回写 Redis
-        if (followingObj == null || fansObj == null || likesObj == null) {
-            UserCountVO dbStats = usersMapper.countByUserId(userId);
-            if (dbStats != null) {
-                if (followingObj == null) {
-                    followingCount = dbStats.getFollowingCount() != null ? dbStats.getFollowingCount() : 0;
-                    redisTemplate.opsForHash().put(statsKey, "followingCount", followingCount);
-                }
-                if (fansObj == null) {
-                    followersCount = dbStats.getFollowersCount() != null ? dbStats.getFollowersCount() : 0;
-                    redisTemplate.opsForHash().put(statsKey, "followersCount", followersCount);
-                }
-                if (likesObj == null) {
-                    likesCount = dbStats.getLikesCount() != null ? dbStats.getLikesCount() : 0;
-                    redisTemplate.opsForHash().put(statsKey, "likesCount", likesCount);
-                }
-            }
+        UserCountVO result = new UserCountVO();
+        if (stats != null) {
+            result.setFollowingCount(UserStatsHelper.getInt(stats, UserStatsHelper.FIELD_FOLLOWING_COUNT));
+            result.setFollowersCount(UserStatsHelper.getInt(stats, UserStatsHelper.FIELD_FOLLOWERS_COUNT));
+            result.setLikesCount(UserStatsHelper.getInt(stats, UserStatsHelper.FIELD_LIKES_COUNT));
+        } else {
+            // 用户不存在或重建失败，兜底 0
+            result.setFollowingCount(0);
+            result.setFollowersCount(0);
+            result.setLikesCount(0);
         }
-
-        UserCountVO stats = new UserCountVO();
-        stats.setFollowingCount(followingCount);
-        stats.setFollowersCount(followersCount);
-        stats.setLikesCount(likesCount);
-        vo.setStats(stats);
+        vo.setStats(result);
     }
 
     // ======================== 获取指定用户帖子列表（游标分页） ========================

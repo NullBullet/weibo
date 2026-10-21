@@ -12,6 +12,7 @@ import com.jun.service.ActivityService;
 import com.jun.service.PostService;
 import com.jun.utils.HotScoreCalculator;
 import com.jun.utils.PostStatsHelper;
+import com.jun.utils.UserStatsHelper;
 import com.jun.vo.ToggleLikeVO;
 import jakarta.annotation.Resource;
 import lombok.NonNull;
@@ -45,6 +46,8 @@ public class PostServiceImpl implements PostService {
     private RabbitTemplate rabbitTemplate;
     @Resource
     private PostStatsHelper postStatsHelper;
+    @Resource
+    private UserStatsHelper userStatsHelper;
 
     //todo 未保证redis原子性，MQ异步落库
     @Transactional
@@ -62,8 +65,10 @@ public class PostServiceImpl implements PostService {
 
         String postStatsKey = POST_STATS_KEY + statusId;
 
-        // 防御：统计缓存缺失时先重建，避免 HINCRBY 在 key 丢失时创建残缺 hash
+        // 防御：统计缓存缺失时先重建，避免 HINCRBY 在 key 丢失时创建残缺 hash；
+        // 用户统计必须在下方 updateStatistics（DB 写）之前重建，避免重建读到未提交计数导致双重加
         postStatsHelper.ensureStats(statusId);
+        userStatsHelper.ensureStats(postOwnerId);
 
         if (Boolean.TRUE.equals(toggleLikeDTO.getIsLiked())) {
             Long add = redisTemplate.opsForSet().add(LIKE_POST_KEY + statusId, userId.toString());
@@ -97,6 +102,8 @@ public class PostServiceImpl implements PostService {
                 if (postOwnerId != null) {
                     postMapper.updateStatistics(1, postOwnerId);
                     redisTemplate.opsForHash().increment(USER_STATS_KEY + postOwnerId, "likesCount", 1);
+                    // 统计值修改成功，续期缓存 TTL
+                    userStatsHelper.refreshTtl(postOwnerId);
                 }
 
                 ToggleLikeVO toggleLikeVO = ToggleLikeVO.builder().likeCount(likeCount).isLiked(true).build();
@@ -145,6 +152,8 @@ public class PostServiceImpl implements PostService {
                 if (postOwnerId != null) {
                     postMapper.updateStatistics(-1, postOwnerId);
                     redisTemplate.opsForHash().increment(USER_STATS_KEY + postOwnerId, "likesCount", -1);
+                    // 统计值修改成功，续期缓存 TTL
+                    userStatsHelper.refreshTtl(postOwnerId);
                 }
 
                 ToggleLikeVO toggleLikeVO = ToggleLikeVO.builder().likeCount(likeCount).isLiked(false).build();

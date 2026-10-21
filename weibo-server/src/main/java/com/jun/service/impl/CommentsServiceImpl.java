@@ -17,6 +17,7 @@ import com.jun.result.Result;
 import com.jun.service.CommentsService;
 import com.jun.utils.HotScoreCalculator;
 import com.jun.utils.PostStatsHelper;
+import com.jun.utils.UserStatsHelper;
 import com.jun.vo.CommentVO;
 import com.jun.vo.ReplyCountVO;
 import com.jun.vo.ToggleLikeVO;
@@ -57,6 +58,8 @@ public class CommentsServiceImpl implements CommentsService {
     private RabbitTemplate rabbitTemplate;
     @Resource
     private PostStatsHelper postStatsHelper;
+    @Resource
+    private UserStatsHelper userStatsHelper;
 
     // ======================== 评论点赞 ========================
 
@@ -74,6 +77,10 @@ public class CommentsServiceImpl implements CommentsService {
             return Result.error("评论不存在");
         }
         Long commentOwnerId = comment.getUserId();
+
+        // 防御：作者获赞数缓存缺失时先重建；必须在下方 updateStatistics（DB 写）之前，
+        // 否则重建会读到未提交计数导致双重加，也避免 HINCRBY 创建残缺 hash
+        userStatsHelper.ensureStats(commentOwnerId);
 
         if (Boolean.TRUE.equals(toggleLikeDTO.getIsLiked())) {
             Long add = redisTemplate.opsForSet().add(likeKey, userId.toString());
@@ -100,6 +107,8 @@ public class CommentsServiceImpl implements CommentsService {
                 if (commentOwnerId != null) {
                     postMapper.updateStatistics(1, commentOwnerId);
                     redisTemplate.opsForHash().increment(USER_STATS_KEY + commentOwnerId, "likesCount", 1);
+                    // 统计值修改成功，续期缓存 TTL
+                    userStatsHelper.refreshTtl(commentOwnerId);
                 }
 
                 ToggleLikeVO vo = ToggleLikeVO.builder().likeCount(likeCount).isLiked(true).build();
@@ -139,6 +148,8 @@ public class CommentsServiceImpl implements CommentsService {
                 if (commentOwnerId != null) {
                     postMapper.updateStatistics(-1, commentOwnerId);
                     redisTemplate.opsForHash().increment(USER_STATS_KEY + commentOwnerId, "likesCount", -1);
+                    // 统计值修改成功，续期缓存 TTL
+                    userStatsHelper.refreshTtl(commentOwnerId);
                 }
 
                 ToggleLikeVO vo = ToggleLikeVO.builder().likeCount(likeCount).isLiked(false).build();

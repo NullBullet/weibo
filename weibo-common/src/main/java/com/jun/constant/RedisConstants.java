@@ -7,6 +7,12 @@ public class RedisConstants {
     public static final String FOLLOW_FANS_KEY = "follow:fans:";
     //用户统计    user:stats:{userId} -> followingCount, followersCount, likesCount
     public static final String USER_STATS_KEY = "user:stats:";
+    //用户统计缓存 TTL：7 天（秒），初始化写入，业务访问时刷新
+    public static final Long USER_STATS_TTL = 7 * 24 * 60 * 60L;
+    //用户统计重建分布式锁  user:stats:lock:{userId}
+    public static final String USER_STATS_LOCK_KEY = "user:stats:lock:";
+    //重建锁过期时间（秒），防止持锁端宕机导致死锁
+    public static final long USER_STATS_LOCK_TTL_SECONDS = 30L;
     //微博被谁点赞
     public static final String LIKE_POST_KEY = "like:post:";
 

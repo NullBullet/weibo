@@ -39,6 +39,7 @@ import static com.jun.constant.RedisConstants.IP_CAPTCHA_KEY;
 import static com.jun.constant.RedisConstants.IP_LOGIN_KEY;
 import static com.jun.constant.RedisConstants.LOGIN_FAIL_KEY;
 import static com.jun.constant.RedisConstants.USER_STATS_KEY;
+import static com.jun.constant.RedisConstants.USER_STATS_TTL;
 import static com.jun.constant.StatusConstant.ENABLE;
 
 @Slf4j
@@ -260,6 +261,7 @@ public class AuthServiceImpl implements AuthService {
                 "statusesCount", 0,
                 "likesCount", 0
         ));
+        redisTemplate.expire(statsKey, USER_STATS_TTL, TimeUnit.SECONDS);
 
         // 注册成功后直接登录，生成 token
         String token = buildToken(user.getId());

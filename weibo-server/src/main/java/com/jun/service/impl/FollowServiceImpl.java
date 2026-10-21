@@ -6,6 +6,7 @@ import com.jun.result.Result;
 import com.jun.service.FollowService;
 import com.jun.entity.Statuses;
 import com.jun.mapper.FollowMapper;
+import com.jun.utils.UserStatsHelper;
 import jakarta.annotation.Resource;
 
 import java.time.ZoneOffset;
@@ -26,10 +27,17 @@ public class FollowServiceImpl implements FollowService {
     private RedisTemplate redisTemplate;
     @Resource
     private FollowMapper followMapper;
+    @Resource
+    private UserStatsHelper userStatsHelper;
 
     @Transactional
     @Override
     public Result follow(Long currentUserId, Long targetUserId) {
+        // 防御：必须在事务内任何 user_statistics 写之前重建缺失的统计缓存，
+        // 否则重建会读到未提交的计数导致双重加，也避免 HINCRBY 创建残缺 hash
+        userStatsHelper.ensureStats(currentUserId);
+        userStatsHelper.ensureStats(targetUserId);
+
         if(followMapper.saveFollower(currentUserId,targetUserId)<=0||
                 followMapper.saveFollowing(currentUserId, targetUserId) <= 0){
             throw new FollowFailException(FOLLOW_FAIL);
@@ -44,6 +52,9 @@ public class FollowServiceImpl implements FollowService {
         redisTemplate.opsForSet().add(FOLLOW_FANS_KEY + targetUserId, currentUserId.toString());
         redisTemplate.opsForHash().increment(USER_STATS_KEY + currentUserId, "followingCount", 1);
         redisTemplate.opsForHash().increment(USER_STATS_KEY + targetUserId, "followersCount", 1);
+        // 统计值修改成功，续期缓存 TTL
+        userStatsHelper.refreshTtl(currentUserId);
+        userStatsHelper.refreshTtl(targetUserId);
 
         // 回填历史微博到收件箱
         String feedKey = FEED_USER_KEY + currentUserId;
@@ -68,6 +79,11 @@ public class FollowServiceImpl implements FollowService {
     @Transactional
     @Override
     public Result unfollow(Long currentUserId, Long targetUserId) {
+        // 防御：必须在事务内任何 user_statistics 写之前重建缺失的统计缓存，
+        // 否则重建会读到未提交的计数导致双重减，也避免 HINCRBY 创建残缺 hash
+        userStatsHelper.ensureStats(currentUserId);
+        userStatsHelper.ensureStats(targetUserId);
+
         if (followMapper.deleteFollower(currentUserId,targetUserId)<=0||
         followMapper.deleteFollowing(currentUserId,targetUserId)<=0) {
             throw new FollowFailException(UNFOLLOW_FAIL);
@@ -82,6 +98,9 @@ public class FollowServiceImpl implements FollowService {
         redisTemplate.opsForSet().remove(FOLLOW_FANS_KEY + targetUserId, currentUserId.toString());
         redisTemplate.opsForHash().increment(USER_STATS_KEY + currentUserId, "followingCount", -1);
         redisTemplate.opsForHash().increment(USER_STATS_KEY + targetUserId, "followersCount", -1);
+        // 统计值修改成功，续期缓存 TTL
+        userStatsHelper.refreshTtl(currentUserId);
+        userStatsHelper.refreshTtl(targetUserId);
 
         // 清理收件箱：删除被取关用户的帖子
         String feedKey = FEED_USER_KEY + currentUserId;
