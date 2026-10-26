@@ -8,6 +8,7 @@ import com.jun.context.BaseContext;
 import com.jun.dto.SearchResultDTO;
 import com.jun.dto.SearchUsersDTO;
 import com.jun.entity.StatusImage;
+import com.jun.enumeration.TargetType;
 import com.jun.mapper.SearchMapper;
 import com.jun.model.ScoredPost;
 import com.jun.result.PageResult;
@@ -15,6 +16,7 @@ import com.jun.result.Result;
 import com.jun.service.SearchService;
 import com.jun.service.RewardService;
 import com.jun.utils.HotScoreCalculator;
+import com.jun.utils.LikeSetHelper;
 import com.jun.utils.PostStatsHelper;
 import com.jun.vo.*;
 import jakarta.annotation.Resource;
@@ -45,6 +47,8 @@ public class SearchServiceImpl implements SearchService {
     private RewardService rewardService;
     @Resource
     private PostStatsHelper postStatsHelper;
+    @Resource
+    private LikeSetHelper likeSetHelper;
 
     @Override
     public Result comprehensionResults(SearchResultDTO searchResultDTO) {
@@ -382,12 +386,18 @@ public class SearchServiceImpl implements SearchService {
         if (userId != null) {
 
             List<String> likeKeys = new ArrayList<>();
+            List<Long> likeTargetIds = new ArrayList<>();
             for (SearchStatusVO vo : list) {
                 likeKeys.add(LIKE_POST_KEY + vo.getId());
+                likeTargetIds.add(vo.getId());
                 if (vo.getOriginalStatus() != null) {
                     likeKeys.add(LIKE_POST_KEY + vo.getOriginalStatus().getId());
+                    likeTargetIds.add(vo.getOriginalStatus().getId());
                 }
             }
+
+            // 兜底：点赞集合缓存缺失时从数据库重建，防止已点赞显示为未点赞
+            likeSetHelper.ensureLikeSets(TargetType.POST, likeTargetIds);
 
             List<Object> results = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
                 for (String key : likeKeys) {
@@ -639,6 +649,8 @@ public class SearchServiceImpl implements SearchService {
 
         //5. 批量判断点赞
         if (currentUserId != null) {
+            // 兜底：点赞集合缓存缺失时从数据库重建，防止已点赞显示为未点赞
+            likeSetHelper.ensureLikeSets(TargetType.POST, originalIds);
 
             List<Object> likeResults =
                     redisTemplate.executePipelined((RedisCallback<Object>) connection -> {

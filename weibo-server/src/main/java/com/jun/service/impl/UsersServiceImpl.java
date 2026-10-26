@@ -10,10 +10,12 @@ import com.jun.dto.StatusPageQueryDTO;
 import com.jun.dto.UserProfileDTO;
 import com.jun.entity.StatusImage;
 import com.jun.entity.User;
+import com.jun.enumeration.TargetType;
 import com.jun.exception.UploadAvatarException;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.result.ScrollResult;
+import com.jun.utils.LikeSetHelper;
 import com.jun.utils.OssUtil;
 import com.jun.utils.PostStatsHelper;
 import com.jun.utils.UserPostIdsHelper;
@@ -65,6 +67,8 @@ public class UsersServiceImpl implements UsersService {
     private UserStatsHelper userStatsHelper;
     @Resource
     private UserPostIdsHelper userPostIdsHelper;
+    @Resource
+    private LikeSetHelper likeSetHelper;
 
     @Override
     public Result<UsersInfoVO> me() {
@@ -207,6 +211,9 @@ public class UsersServiceImpl implements UsersService {
 
             Map<Long, List<StatusImage>> imageMap = images.stream()
                     .collect(Collectors.groupingBy(StatusImage::getStatusId));
+
+            // 兜底：点赞集合缓存缺失时从数据库重建，防止已点赞显示为未点赞
+            likeSetHelper.ensureLikeSets(TargetType.POST, missIdList);
 
             for (StatusVO vo : dbList) {
                 vo.setImages(imageMap.get(vo.getId()));
@@ -413,6 +420,11 @@ public class UsersServiceImpl implements UsersService {
                                 StatusImage::getStatusId
                         ));
 
+        // 兜底：点赞集合缓存缺失时从数据库重建，防止已点赞显示为未点赞
+        if (BaseContext.getCurrentId() != null) {
+            likeSetHelper.ensureLikeSets(TargetType.POST, originalIds);
+        }
+
         // 4. 填充原微博信息
         for (StatusVO vo : originalList) {
 
@@ -472,6 +484,9 @@ public class UsersServiceImpl implements UsersService {
         List<StatusImage> images = usersMapper.getImageByIds(ids);
         Map<Long, List<StatusImage>> groupByStatusId = images.stream()
                 .collect(Collectors.groupingBy(StatusId -> StatusId.getStatusId()));
+
+        // 兜底：点赞集合缓存缺失时从数据库重建，防止已点赞显示为未点赞
+        likeSetHelper.ensureLikeSets(TargetType.POST, ids);
 
         for (StatusVO statusVO : page) {
             List<StatusImage> image = groupByStatusId.get(statusVO.getId());
@@ -711,6 +726,9 @@ public class UsersServiceImpl implements UsersService {
 
             Map<Long, List<StatusImage>> imageMap = images.stream()
                     .collect(Collectors.groupingBy(StatusImage::getStatusId));
+
+            // 兜底：点赞集合缓存缺失时从数据库重建，防止已点赞显示为未点赞
+            likeSetHelper.ensureLikeSets(TargetType.POST, missIdList);
 
             for (StatusVO vo : dbList) {
                 vo.setImages(imageMap.get(vo.getId()));

@@ -3,6 +3,7 @@ package com.jun.service.impl;
 import cn.hutool.json.JSONUtil;
 import com.jun.dto.ScrollDTO;
 import com.jun.entity.StatusImage;
+import com.jun.enumeration.TargetType;
 import com.jun.result.Result;
 import com.jun.result.ScrollResult;
 import com.jun.service.RewardService;
@@ -12,6 +13,7 @@ import com.jun.vo.HotTopicVO;
 import com.jun.vo.StatusVO;
 import com.jun.mapper.HotMapper;
 import com.jun.service.HotService;
+import com.jun.utils.LikeSetHelper;
 import com.jun.utils.PostStatsHelper;
 import com.jun.vo.UserVO;
 import jakarta.annotation.Resource;
@@ -38,6 +40,8 @@ public class HotServiceImpl implements HotService {
     private RewardService rewardService;
     @Resource
     private PostStatsHelper postStatsHelper;
+    @Resource
+    private LikeSetHelper likeSetHelper;
 
     @Override
     public Result<List<HotTopicVO>> topics(Integer size) {
@@ -278,14 +282,20 @@ public class HotServiceImpl implements HotService {
         if (currentUserId != null) {
             //12.1 收集所有微博的 LikeKey（含原微博），用于批量检查
             List<String> likeKeys = new ArrayList<>();
+            List<Long> likeTargetIds = new ArrayList<>();
             for (HotStatusVO vo : finalList) {
                 likeKeys.add(LIKE_POST_KEY + vo.getId());
+                likeTargetIds.add(vo.getId());
                 if (vo.getOriginalStatus() != null) {
                     likeKeys.add(LIKE_POST_KEY + vo.getOriginalStatus().getId());
+                    likeTargetIds.add(vo.getOriginalStatus().getId());
                 }
             }
 
-            //12.2 批量检查
+            //12.2 兜底：点赞集合缓存缺失时从数据库重建，防止已点赞显示为未点赞
+            likeSetHelper.ensureLikeSets(TargetType.POST, likeTargetIds);
+
+            //12.3 批量检查
             List<Object> results = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
                 for (String key : likeKeys) {
                     connection.setCommands().sIsMember(key.getBytes(), currentUserId.toString().getBytes());
@@ -293,7 +303,7 @@ public class HotServiceImpl implements HotService {
                 return null;
             });
 
-            //12.3 回填
+            //12.4 回填
             int idx = 0;
             for (HotStatusVO vo : finalList) {
                 Boolean isMember = (Boolean) results.get(idx++);
@@ -455,6 +465,8 @@ public class HotServiceImpl implements HotService {
 
         //5. 批量判断点赞
         if (currentUserId != null) {
+            // 兜底：点赞集合缓存缺失时从数据库重建，防止已点赞显示为未点赞
+            likeSetHelper.ensureLikeSets(TargetType.POST, originalIds);
 
             List<Object> likeResults =
                     redisTemplate.executePipelined((RedisCallback<Object>) connection -> {

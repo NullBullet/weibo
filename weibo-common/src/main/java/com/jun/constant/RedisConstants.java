@@ -62,6 +62,8 @@ public class RedisConstants {
     public static final long COMMENT_STATS_LOCK_TTL_SECONDS = 30L;
     //评论被谁点赞
     public static final String LIKE_COMMENT_KEY = "like:comment:";
+    //点赞集合缓存 TTL：7 天（秒），重建/写入时设置与续期，读路径 miss 时从 attitudes 表重建
+    public static final Long LIKE_SET_TTL = 7 * 24 * 60 * 60L;
     //用户信息缓存    user:profile:{userId}
     public static final String USER_PROFILE_KEY = "user:profile:";
     public static final Long USER_PROFILE_TTL = 3600L;

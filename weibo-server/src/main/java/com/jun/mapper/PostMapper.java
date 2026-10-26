@@ -3,6 +3,7 @@ package com.jun.mapper;
 import com.jun.dto.RepostDTO;
 import com.jun.dto.ToggleLikeDTO;
 import com.jun.entity.Statuses;
+import com.jun.vo.LikeRecordVO;
 import com.jun.vo.StatusVO;
 import org.apache.ibatis.annotations.*;
 
@@ -19,6 +20,8 @@ public interface PostMapper {
 
     @Delete("delete from attitudes where user_id = #{userId} and target_type = #{targetTypeValue} and target_id = #{targetId}")
     void deleteLikeInfo(ToggleLikeDTO toggleLikeDTO);
+
+    List<LikeRecordVO> getLikeRecords(@Param("targetType") int targetType, @Param("targetIds") List<Long> targetIds);
 
     @Update("update user_statistics set likes_count = likes_count + #{likeCount} where user_id = #{userId}")
     void updateStatistics(@Param("likeCount") int likeCount, @Param("userId") Long userId);

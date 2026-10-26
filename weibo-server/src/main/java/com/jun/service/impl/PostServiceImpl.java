@@ -5,12 +5,14 @@ import com.jun.context.BaseContext;
 import com.jun.dto.RepostDTO;
 import com.jun.dto.ToggleLikeDTO;
 import com.jun.mapper.PostMapper;
+import com.jun.enumeration.TargetType;
 import com.jun.mq.message.LikeMessage;
 import com.jun.mq.message.RepostMessage;
 import com.jun.result.Result;
 import com.jun.service.ActivityService;
 import com.jun.service.PostService;
 import com.jun.utils.HotScoreCalculator;
+import com.jun.utils.LikeSetHelper;
 import com.jun.utils.PostStatsHelper;
 import com.jun.utils.UserStatsHelper;
 import com.jun.vo.ToggleLikeVO;
@@ -48,8 +50,9 @@ public class PostServiceImpl implements PostService {
     private PostStatsHelper postStatsHelper;
     @Resource
     private UserStatsHelper userStatsHelper;
+    @Resource
+    private LikeSetHelper likeSetHelper;
 
-    //todo 未保证redis原子性，MQ异步落库
     @Transactional
     @Override
     public Result togglePostLike(ToggleLikeDTO toggleLikeDTO) {
@@ -69,11 +72,17 @@ public class PostServiceImpl implements PostService {
         // 用户统计必须在下方 updateStatistics（DB 写）之前重建，避免重建读到未提交计数导致双重加
         postStatsHelper.ensureStats(statusId);
         userStatsHelper.ensureStats(postOwnerId);
+        // 防御：点赞集合缓存缺失时先从 attitudes 表重建，保证 SADD/SREM 返回值反映
+        // 数据库真实状态——否则已点赞用户再次点赞会被当作新赞，likeCount 重复累加并
+        // 重复落库；取消点赞会被误判为幂等，DB 记录无法删除
+        likeSetHelper.ensureLikeSet(TargetType.POST, statusId);
 
         if (Boolean.TRUE.equals(toggleLikeDTO.getIsLiked())) {
             Long add = redisTemplate.opsForSet().add(LIKE_POST_KEY + statusId, userId.toString());
             if (add == 1) {
                 Long likeCount = redisTemplate.opsForHash().increment(postStatsKey, "likeCount", 1);
+                // 点赞写入成功，续期点赞集合 TTL
+                likeSetHelper.refreshTtl(TargetType.POST, statusId);
                 //postMapper.saveLikeInfo(toggleLikeDTO);
                 //postMapper.updateStatusLikeCount(1, statusId);
                 LikeMessage message = LikeMessage.builder()
@@ -124,6 +133,8 @@ public class PostServiceImpl implements PostService {
                     likeCount = 0L;
                     redisTemplate.opsForHash().put(postStatsKey, "likeCount", 0);
                 }
+                // 取消点赞写入成功，续期点赞集合 TTL
+                likeSetHelper.refreshTtl(TargetType.POST, statusId);
                 //postMapper.deleteLikeInfo(toggleLikeDTO);
                 //postMapper.updateStatusLikeCount(-1, statusId);
                 LikeMessage message = LikeMessage.builder()

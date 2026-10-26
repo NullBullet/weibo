@@ -8,6 +8,7 @@ import com.jun.dto.PostCommentsDTO;
 import com.jun.dto.RepliesCommentsResultDTO;
 import com.jun.dto.ToggleLikeDTO;
 import com.jun.entity.Comment;
+import com.jun.enumeration.TargetType;
 import com.jun.mapper.CommentsMapper;
 import com.jun.mapper.PostMapper;
 import com.jun.mq.message.CommentLikeMessage;
@@ -16,6 +17,7 @@ import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.service.CommentsService;
 import com.jun.utils.HotScoreCalculator;
+import com.jun.utils.LikeSetHelper;
 import com.jun.utils.PostStatsHelper;
 import com.jun.utils.UserStatsHelper;
 import com.jun.utils.CommentStatsHelper;
@@ -63,6 +65,8 @@ public class CommentsServiceImpl implements CommentsService {
     private UserStatsHelper userStatsHelper;
     @Resource
     private CommentStatsHelper commentStatsHelper;
+    @Resource
+    private LikeSetHelper likeSetHelper;
 
     // ======================== 评论点赞 ========================
 
@@ -85,11 +89,17 @@ public class CommentsServiceImpl implements CommentsService {
         // 否则重建会读到未提交计数导致双重加，也避免 HINCRBY 创建残缺 hash
         userStatsHelper.ensureStats(commentOwnerId);
 
+        // 防御：点赞集合缓存缺失时先从 attitudes 表重建，保证 SADD/SREM 返回值反映
+        // 数据库真实状态（防止重复点赞重复计数/落库、取消点赞误判为幂等）
+        likeSetHelper.ensureLikeSet(toggleLikeDTO.getTargetType(), commentId);
+
         if (Boolean.TRUE.equals(toggleLikeDTO.getIsLiked())) {
             Long add = redisTemplate.opsForSet().add(likeKey, userId.toString());
             if (add == 1) {
                 // 防御 + 增量 + 续期：缓存缺失/残缺时先完整重建，避免 HINCRBY 建立在错误基线上
                 Long likeCount = commentStatsHelper.incrementLike(commentId, 1);
+                // 点赞写入成功，续期点赞集合 TTL
+                likeSetHelper.refreshTtl(toggleLikeDTO.getTargetType(), commentId);
 
                 // MQ 异步入库：保存点赞记录 + 更新评论点赞数
                 CommentLikeMessage message = CommentLikeMessage.builder()
@@ -133,6 +143,8 @@ public class CommentsServiceImpl implements CommentsService {
                     redisTemplate.opsForHash().put(statsKey, "likeCount", 0);
                     commentStatsHelper.refreshTtl(commentId);
                 }
+                // 取消点赞写入成功，续期点赞集合 TTL
+                likeSetHelper.refreshTtl(toggleLikeDTO.getTargetType(), commentId);
 
                 // MQ 异步入库：删除点赞记录 + 更新评论点赞数
                 CommentLikeMessage message = CommentLikeMessage.builder()
@@ -796,6 +808,9 @@ public class CommentsServiceImpl implements CommentsService {
 
     private Map<Long, Boolean> batchGetCommentIsLiked(List<Long> commentIds, Long userId) {
         if (commentIds.isEmpty() || userId == null) return Collections.emptyMap();
+
+        // 兜底：点赞集合缓存缺失时从数据库重建，防止已点赞显示为未点赞
+        likeSetHelper.ensureLikeSets(TargetType.COMMENT, commentIds);
 
         Map<Long, Boolean> result = new HashMap<>();
         for (Long id : commentIds) {
