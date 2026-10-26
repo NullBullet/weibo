@@ -2,6 +2,7 @@ package com.jun.consumer;
 
 import com.jun.config.RabbitMQConfig;
 import com.jun.mq.message.FeedMessage;
+import com.jun.utils.FeedHelper;
 import com.jun.utils.FollowSetHelper;
 import com.rabbitmq.client.Channel;
 import jakarta.annotation.Resource;
@@ -17,7 +18,6 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static com.jun.config.RabbitMQConfig.FEED_MAX_RETRY_COUNT;
-import static com.jun.constant.RedisConstants.FEED_USER_KEY;
 import static com.jun.constant.RedisConstants.FOLLOW_FANS_KEY;
 import static com.jun.constant.RedisConstants.MQ_IDEMPOTENT_KEY;
 
@@ -31,6 +31,8 @@ public class FeedConsumer {
     private RedisTemplate redisTemplate;
     @Resource
     private FollowSetHelper followSetHelper;
+    @Resource
+    private FeedHelper feedHelper;
 
     @RabbitListener(
             queues = RabbitMQConfig.FEED_QUEUE,
@@ -58,21 +60,9 @@ public class FeedConsumer {
             Set<String> fans = redisTemplate.opsForSet().members(fansKey);
 
             if (fans != null && !fans.isEmpty()) {
-                // 3. 推送到每个粉丝的收件箱 + 裁剪到最近 200 条
-                for (String fanId : fans) {
-                    // 跳过空集合哨兵，避免给不存在的 userId=0 写收件箱
-                    if (FollowSetHelper.EMPTY_SENTINEL.equals(fanId)) {
-                        continue;
-                    }
-                    String feedKey = FEED_USER_KEY + fanId;
-                    redisTemplate.opsForZSet().add(
-                            feedKey,
-                            message.getStatusId().toString(),
-                            message.getCreateTime().doubleValue()
-                    );
-                    // 只保留最近 200 条
-                    redisTemplate.opsForZSet().removeRange(feedKey, 0, -201);
-                }
+                // 3. 仅向已存在的收件箱追加并裁剪到最近 200 条；key 缺失说明用户长时间未访问，
+                // 直接 ZADD 会形成只含本条帖子的半截收件箱，交由读路径整箱重建更安全
+                feedHelper.appendIfPresent(fans, message.getStatusId(), message.getCreateTime());
             }
 
             // 幂等标记（7天）

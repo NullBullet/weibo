@@ -38,4 +38,8 @@ public interface FollowMapper {
     /** 谁关注了我：user_follower 中 followee_id = 我的 follower_id 列表 */
     @Select("select follower_id from user_follower where followee_id = #{userId}")
     List<Long> getFansIds(@Param("userId") Long userId);
+
+    /** 批量取多个用户最近的未删除帖子（仅 id + createTime），用于重建收件箱（SQL 见 FollowMapper.xml） */
+    List<Statuses> getRecentPostsByUserIds(@Param("userIds") List<Long> userIds,
+                                           @Param("limit") int limit);
 }

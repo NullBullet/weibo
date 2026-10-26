@@ -11,6 +11,7 @@ import com.jun.result.Result;
 import com.jun.result.ScrollResult;
 import com.jun.service.HomeService;
 import com.jun.service.RewardService;
+import com.jun.utils.FeedHelper;
 import com.jun.utils.FollowSetHelper;
 import com.jun.utils.LikeSetHelper;
 import com.jun.utils.PostStatsHelper;
@@ -51,6 +52,8 @@ public class HomeServiceImpl implements HomeService {
     private LikeSetHelper likeSetHelper;
     @Resource
     private FollowSetHelper followSetHelper;
+    @Resource
+    private FeedHelper feedHelper;
 
     @Override
     public Result getLatestPosts(HomeQueryDTO homeQueryDTO) {
@@ -76,6 +79,8 @@ public class HomeServiceImpl implements HomeService {
         }
 
         String feedKey = FEED_USER_KEY + userId;
+        // 读路径兜底：收件箱过期/丢失时按关注关系从 DB 重建，避免首页静默为空
+        feedHelper.ensureFeed(userId);
         Set<ZSetOperations.TypedTuple<String>> tuples =
                 redisTemplate.opsForZSet()
                         .reverseRangeByScoreWithScores(feedKey, minScore, maxScore, offset, pageSize);
@@ -83,6 +88,9 @@ public class HomeServiceImpl implements HomeService {
         if (tuples == null || tuples.isEmpty()) {
             return Result.success(new ScrollResult(null, 0, Collections.emptyList()));
         }
+
+        // 访问命中，续期收件箱 TTL
+        feedHelper.refreshTtl(userId);
 
         List<Long> statusIds = tuples.stream()
                 .map(t -> Long.valueOf(t.getValue()))
@@ -102,12 +110,17 @@ public class HomeServiceImpl implements HomeService {
         if (offset == null) offset = 0;
 
         String feedKey = FEED_USER_KEY + userId;
+        // 读路径兜底：收件箱过期/丢失时按关注关系从 DB 重建
+        feedHelper.ensureFeed(userId);
         Set<ZSetOperations.TypedTuple<String>> feedTuples =
                 redisTemplate.opsForZSet().reverseRangeWithScores(feedKey, 0, 999);
 
         if (feedTuples == null || feedTuples.isEmpty()) {
             return Result.success(new ScrollResult(null, 0, Collections.emptyList()));
         }
+
+        // 访问命中，续期收件箱 TTL
+        feedHelper.refreshTtl(userId);
 
         List<Long> feedPostIds = feedTuples.stream()
                 .map(t -> Long.valueOf(t.getValue()))

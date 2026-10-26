@@ -6,6 +6,7 @@ import com.jun.result.Result;
 import com.jun.service.FollowService;
 import com.jun.entity.Statuses;
 import com.jun.mapper.FollowMapper;
+import com.jun.utils.FeedHelper;
 import com.jun.utils.FollowSetHelper;
 import com.jun.utils.UserStatsHelper;
 import jakarta.annotation.Resource;
@@ -32,6 +33,8 @@ public class FollowServiceImpl implements FollowService {
     private UserStatsHelper userStatsHelper;
     @Resource
     private FollowSetHelper followSetHelper;
+    @Resource
+    private FeedHelper feedHelper;
 
     @Transactional
     @Override
@@ -69,7 +72,9 @@ public class FollowServiceImpl implements FollowService {
         followSetHelper.refreshTtlFollowing(currentUserId);
         followSetHelper.refreshTtlFans(targetUserId);
 
-        // 回填历史微博到收件箱
+        // 回填历史微博到收件箱（先确保收件箱完整：key 缺失时若直接回填，
+        // 会只包含本次被关注者的帖子而丢掉其他关注者的历史内容）
+        feedHelper.ensureFeed(currentUserId);
         String feedKey = FEED_USER_KEY + currentUserId;
         List<Statuses> recentPosts = followMapper.getRecentPostsByUserId(targetUserId);
         if (recentPosts != null && !recentPosts.isEmpty()) {
@@ -84,6 +89,8 @@ public class FollowServiceImpl implements FollowService {
                 }
                 return null;
             });
+            // 回填写入成功，续期收件箱 TTL
+            feedHelper.refreshTtl(currentUserId);
         }
 
         return Result.success("关注成功");

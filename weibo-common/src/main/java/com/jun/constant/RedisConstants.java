@@ -74,6 +74,9 @@ public class RedisConstants {
 
     //用户收件箱    feed:user:{userId} -> ZSET (postId, createTime)
     public static final String FEED_USER_KEY = "feed:user:";
+    //用户收件箱缓存 TTL：7 天（秒），重建/扇出写入时设置与续期，
+    //无独立收件箱表，miss 时由关注对象的最近帖子聚合重建
+    public static final Long FEED_USER_TTL = 7 * 24 * 60 * 60L;
 
     //活跃用户    active_users -> ZSET (userId, loginTimestampMs)
     public static final String ACTIVE_USERS_KEY = "active:users";
