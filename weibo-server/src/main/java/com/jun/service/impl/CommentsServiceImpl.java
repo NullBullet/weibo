@@ -812,10 +812,18 @@ public class CommentsServiceImpl implements CommentsService {
         // 兜底：点赞集合缓存缺失时从数据库重建，防止已点赞显示为未点赞
         likeSetHelper.ensureLikeSets(TargetType.COMMENT, commentIds);
 
+        // pipeline 批量 SISMEMBER，避免逐条 isMember 的 N 次网络往返
+        byte[] member = userId.toString().getBytes();
+        List<Object> members = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+            for (Long id : commentIds) {
+                connection.setCommands().sIsMember((LIKE_COMMENT_KEY + id).getBytes(), member);
+            }
+            return null;
+        });
+
         Map<Long, Boolean> result = new HashMap<>();
-        for (Long id : commentIds) {
-            Boolean member = redisTemplate.opsForSet().isMember(LIKE_COMMENT_KEY + id, userId.toString());
-            result.put(id, member != null && member);
+        for (int i = 0; i < commentIds.size(); i++) {
+            result.put(commentIds.get(i), Boolean.TRUE.equals(members.get(i)));
         }
         return result;
     }
