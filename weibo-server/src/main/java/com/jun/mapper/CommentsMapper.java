@@ -32,6 +32,8 @@ public interface CommentsMapper {
 
     Long countRepliesByCommentId(@Param("commentId") Long commentId);
 
+    List<Long> getNonDeletedReplyIds(@Param("parentId") Long parentId);
+
     List<ReplyCountVO> getCommentStatsByIds(@Param("commentIds") List<Long> commentIds);
 
     List<UserVO> getUsersInfoByUserIds(@Param("userIds") List<Long> userIds);

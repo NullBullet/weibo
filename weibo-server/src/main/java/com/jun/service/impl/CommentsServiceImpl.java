@@ -191,7 +191,19 @@ public class CommentsServiceImpl implements CommentsService {
 
         Long statusId = comment.getStatusId();
 
-        //3. 计算需要扣减的数量（自身 + 如果是顶级评论则加上未删除回复数）
+        //3.1 防御：删除回复时父评论统计缓存缺失先重建（必须在 DB 软删之前——
+        // 否则重建读到的回复数已不含本回复，基线少 1，再递减会双重扣减），
+        // 与上方 postStatsHelper.ensureStats 防御模式一致
+        if (comment.getParentId() != null) {
+            commentStatsHelper.ensureStats(comment.getParentId());
+        }
+
+        //3.2 删除顶级评论时，先取未删除回复的 id 列表（软删后查询过滤 is_deleted 将拿不到）
+        List<Long> replyIds = null;
+        if (comment.getParentId() == null) {
+            replyIds = commentsMapper.getNonDeletedReplyIds(commentId);
+        }
+
         int deleteCount = 1;
         if (comment.getParentId() == null) {
             int replyCount = commentsMapper.countNonDeletedReplies(commentId);
@@ -216,6 +228,21 @@ public class CommentsServiceImpl implements CommentsService {
         //8. Redis: 评论计数扣减
         String statsKey = POST_STATS_KEY + statusId;
         redisTemplate.opsForHash().increment(statsKey, "commentCount", -deleteCount);
+
+        //8.1 Redis: 删除回复时父评论回复数递减（hash 已由 3.1 确保完整，不会创建残缺 hash）
+        if (comment.getParentId() != null) {
+            commentStatsHelper.incrementReply(comment.getParentId(), -1);
+        }
+
+        //8.2 清理被删评论自身的统计缓存与点赞集合
+        redisTemplate.delete(COMMENT_STATS_KEY + commentId);
+        redisTemplate.delete(LIKE_COMMENT_KEY + commentId);
+        if (replyIds != null && !replyIds.isEmpty()) {
+            for (Long replyId : replyIds) {
+                redisTemplate.delete(COMMENT_STATS_KEY + replyId);
+                redisTemplate.delete(LIKE_COMMENT_KEY + replyId);
+            }
+        }
 
         //9. 删除评论列表缓存
         deleteCommentListCache(statusId);

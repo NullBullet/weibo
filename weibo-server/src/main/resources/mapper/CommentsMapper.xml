@@ -47,6 +47,12 @@
         where status_id = #{statusId} and is_deleted = 0
     </select>
 
+    <!-- 查询未删除回复的 id 列表（软删前调用），供删除评论时清理 Redis 统计与点赞集合 -->
+    <select id="getNonDeletedReplyIds" resultType="java.lang.Long">
+        select id from comments
+        where parent_id = #{parentId} and is_deleted = 0
+    </select>
+
     <select id="countRepliesByCommentId" resultType="java.lang.Long">
         select count(*) from comments
         where parent_id = #{commentId} and is_deleted = 0
