@@ -25,7 +25,7 @@ public class UploadServiceImpl implements UploadService {
     @Override
     public Result<String> uploadStatusImage(MultipartFile multipartFile) {
         String fileUrl = null;
-        if (multipartFile!=null && !multipartFile.isEmpty()) {
+        if (multipartFile != null && !multipartFile.isEmpty()) {
             try {
                 String folder = "weibo/posts/";
                 String dataPath = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM/dd/"));
@@ -37,8 +37,7 @@ public class UploadServiceImpl implements UploadService {
                 log.error("文件上传失败");
                 throw new UploadAvatarException(UPLOAD_IMAGE_ERROR);
             }
-        }
-        else {
+        } else {
             log.error("图片为null");
             throw new UploadAvatarException(UPLOAD_IMAGE_ERROR);
         }

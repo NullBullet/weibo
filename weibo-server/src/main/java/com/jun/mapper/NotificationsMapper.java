@@ -42,8 +42,8 @@ public interface NotificationsMapper {
                                 @Param("targetId") Long targetId);
 
     void decrementLikeNotification(@Param("receiverId") Long receiverId,
-                                    @Param("targetType") Integer targetType,
-                                    @Param("targetId") Long targetId);
+                                   @Param("targetType") Integer targetType,
+                                   @Param("targetId") Long targetId);
 
     void deleteZeroCount(@Param("receiverId") Long receiverId,
                          @Param("targetType") Integer targetType,
@@ -55,8 +55,8 @@ public interface NotificationsMapper {
     List<Map<String, Object>> getSenderInfos(@Param("senderIds") Set<Long> senderIds);
 
     void insertCommentNotification(@Param("receiverId") Long receiverId,
-                                    @Param("senderId") Long senderId,
-                                    @Param("targetType") Integer targetType,
-                                    @Param("targetId") Long targetId,
-                                    @Param("commentId") Long commentId);
+                                   @Param("senderId") Long senderId,
+                                   @Param("targetType") Integer targetType,
+                                   @Param("targetId") Long targetId,
+                                   @Param("commentId") Long commentId);
 }

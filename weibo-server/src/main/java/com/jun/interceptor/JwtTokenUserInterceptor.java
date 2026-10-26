@@ -5,16 +5,13 @@ import com.jun.context.BaseContext;
 import com.jun.properties.JwtProperties;
 import com.jun.utils.JwtUtil;
 import io.jsonwebtoken.Claims;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
-
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.web.servlet.ModelAndView;
 
 /**
  * jwt令牌校验的拦截器
@@ -64,7 +61,7 @@ public class JwtTokenUserInterceptor implements HandlerInterceptor {
 
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
-       BaseContext.removeCurrentId();
+        BaseContext.removeCurrentId();
         if (ex != null) {
             log.error("系统发生严重异常：{}", ex.getMessage());
         }

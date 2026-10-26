@@ -1,21 +1,15 @@
 package com.jun;
 
+import com.jun.dto.ToggleLikeDTO;
 import com.jun.entity.Comment;
 import com.jun.entity.Statuses;
 import com.jun.entity.User;
 import com.jun.entity.UserStatistics;
-import com.jun.dto.ToggleLikeDTO;
-import com.jun.mapper.AttitudeAggregate;
-import com.jun.mapper.AuthMapper;
-import com.jun.mapper.FollowMapper;
-import com.jun.mapper.PostMapper;
-import com.jun.mapper.TestMapper;
-import com.jun.mapper.UsersMapper;
+import com.jun.mapper.*;
 import com.jun.mq.message.FeedMessage;
 import com.jun.utils.HotScoreCalculator;
 import com.jun.vo.SaveStatusVO;
 import jakarta.annotation.Resource;
-import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,7 +21,6 @@ import org.springframework.util.DigestUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
@@ -37,6 +30,26 @@ import static com.jun.constant.RedisConstants.*;
 @SpringBootTest
 public class WeiboServerApplicationTests {
 
+    private static final String DEFAULT_AVATAR = "https://java-ai-kurisutina.oss-cn-beijing.aliyuncs.com/weibo/avatars/default.jpg";
+    private static final String[] COMMENT_TEMPLATES = {
+            "说得好！", "太棒了！", "支持！", "学习了！", "感谢分享！",
+            "同意！说得对", "确实如此", "这个观点很有意思", "楼主说得有道理",
+            "涨知识了", "mark一下", "已阅", "不错不错", "好文章！",
+            "坐等更新", "期待后续", "收藏了", "顶一个", "前排围观",
+            "路过看看", "讲得很透彻", "一针见血", "说到心坎里了",
+            "太真实了", "笑死我了哈哈", "哈哈哈哈", "就很棒",
+            "这也太强了吧", "厉害了", "respect!", "佩服佩服",
+            "想试试", "求教程", "带带我", "在哪里学的",
+            "同问+1", "这个我也有", "同款", "我也有同感",
+            "现在才知道", "原来是这样", "恍然大悟", "学到了新知识",
+            "太有意思了", "精辟", "收藏了慢慢看", "好家伙",
+    };
+    private static final String[] COMMENT_REPLY_TEMPLATES = {
+            "谢谢！", "感谢支持～", "你说得对", "确实是这样",
+            "一起学习", "哈哈是吧", "对的！", "我也这么觉得",
+            "+1", "没错没错", "握手", "英雄所见略同",
+            "已关注你", "互关一下", "谢谢老铁", "点赞了",
+    };
     @Resource
     private RedisTemplate redisTemplate;
     @Resource
@@ -47,14 +60,12 @@ public class WeiboServerApplicationTests {
     private UsersMapper usersMapper;
     @Resource
     private RabbitTemplate rabbitTemplate;
+
+    // ======================== 原有初始化方法 ========================
     @Resource
     private FollowMapper followMapper;
     @Resource
     private PostMapper postMapper;
-
-    private static final String DEFAULT_AVATAR = "https://java-ai-kurisutina.oss-cn-beijing.aliyuncs.com/weibo/avatars/default.jpg";
-
-    // ======================== 原有初始化方法 ========================
 
     //初始化redis所有用户发的微博id统计
     void createUserPostIds() {
@@ -230,6 +241,8 @@ public class WeiboServerApplicationTests {
         System.out.println(">>> 粉丝收件箱初始化完成！共影响 " + totalFanPushes + " 个粉丝收件箱");
     }
 
+    // ======================== 测试数据写入 ========================
+
     void initNotificationLike() {
         System.out.println(">>> 开始初始化 notification_like 表...");
 
@@ -313,7 +326,7 @@ public class WeiboServerApplicationTests {
         System.out.println(">>> notification_comment 初始化完成！共写入 " + inserted + " 条记录");
     }
 
-    // ======================== 测试数据写入 ========================
+    // ======================== 互动评论内容模板 ========================
 
     /**
      * 第一步：批量注册用户
@@ -446,29 +459,6 @@ public class WeiboServerApplicationTests {
 
         System.out.println(">>> 微博发布完成！成功: " + successCount + ", 失败: " + failCount);
     }
-
-    // ======================== 互动评论内容模板 ========================
-
-    private static final String[] COMMENT_TEMPLATES = {
-            "说得好！", "太棒了！", "支持！", "学习了！", "感谢分享！",
-            "同意！说得对", "确实如此", "这个观点很有意思", "楼主说得有道理",
-            "涨知识了", "mark一下", "已阅", "不错不错", "好文章！",
-            "坐等更新", "期待后续", "收藏了", "顶一个", "前排围观",
-            "路过看看", "讲得很透彻", "一针见血", "说到心坎里了",
-            "太真实了", "笑死我了哈哈", "哈哈哈哈", "就很棒",
-            "这也太强了吧", "厉害了", "respect!", "佩服佩服",
-            "想试试", "求教程", "带带我", "在哪里学的",
-            "同问+1", "这个我也有", "同款", "我也有同感",
-            "现在才知道", "原来是这样", "恍然大悟", "学到了新知识",
-            "太有意思了", "精辟", "收藏了慢慢看", "好家伙",
-    };
-
-    private static final String[] COMMENT_REPLY_TEMPLATES = {
-            "谢谢！", "感谢支持～", "你说得对", "确实是这样",
-            "一起学习", "哈哈是吧", "对的！", "我也这么觉得",
-            "+1", "没错没错", "握手", "英雄所见略同",
-            "已关注你", "互关一下", "谢谢老铁", "点赞了",
-    };
 
     // ======================== 第三步：关注关系 ========================
 

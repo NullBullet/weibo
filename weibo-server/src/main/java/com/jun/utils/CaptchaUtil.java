@@ -6,7 +6,6 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.security.SecureRandom;
 import java.util.Base64;
-import java.util.Random;
 
 /**
  * 验证码工具类
@@ -80,5 +79,6 @@ public class CaptchaUtil {
         }
     }
 
-    public record CaptchaResult(String code, String image) {}
+    public record CaptchaResult(String code, String image) {
+    }
 }

@@ -8,61 +8,86 @@
     </insert>
 
     <select id="getPostById" resultType="java.lang.Long">
-        select id from statuses where id = #{statusId} and is_deleted = 0
+        select id
+        from statuses
+        where id = #{statusId}
+          and is_deleted = 0
     </select>
 
     <select id="getCommentById" resultType="com.jun.entity.Comment">
-        select * from comments where id = #{commentId}
+        select *
+        from comments
+        where id = #{commentId}
     </select>
 
     <select id="getTopComments" resultType="com.jun.entity.Comment">
-        select id, status_id, user_id, parent_id, content, likes_count, is_deleted, created_at, updated_at, reply_user_id from comments
-        where status_id = #{statusId} and parent_id is null and is_deleted = 0
+        select id,
+               status_id,
+               user_id,
+               parent_id,
+               content,
+               likes_count,
+               is_deleted,
+               created_at,
+               updated_at,
+               reply_user_id
+        from comments
+        where status_id = #{statusId}
+          and parent_id is null
+          and is_deleted = 0
         order by created_at desc
         limit #{offset}, #{limit}
     </select>
 
     <select id="getRepliesByCommentIds" resultType="com.jun.entity.Comment">
         select * from (
-            select c.*,
-                row_number() over (partition by parent_id order by created_at asc) as rn
-            from comments c
-            where parent_id in
-            <foreach collection="commentIds" item="id" open="(" close=")" separator=",">
-                #{id}
-            </foreach>
-            and is_deleted = 0
+        select c.*,
+        row_number() over (partition by parent_id order by created_at asc) as rn
+        from comments c
+        where parent_id in
+        <foreach collection="commentIds" item="id" open="(" close=")" separator=",">
+            #{id}
+        </foreach>
+        and is_deleted = 0
         ) t where rn &lt;= #{limit}
     </select>
 
     <select id="getRepliesByCommentId" resultType="com.jun.entity.Comment">
-        select * from comments
-        where parent_id = #{commentId} and is_deleted = 0
+        select *
+        from comments
+        where parent_id = #{commentId}
+          and is_deleted = 0
         order by created_at asc
         limit #{offset}, #{limit}
     </select>
 
     <select id="countTotalByStatusId" resultType="java.lang.Long">
-        select count(*) from comments
-        where status_id = #{statusId} and is_deleted = 0
+        select count(*)
+        from comments
+        where status_id = #{statusId}
+          and is_deleted = 0
     </select>
 
     <!-- 查询未删除回复的 id 列表（软删前调用），供删除评论时清理 Redis 统计与点赞集合 -->
     <select id="getNonDeletedReplyIds" resultType="java.lang.Long">
-        select id from comments
-        where parent_id = #{parentId} and is_deleted = 0
+        select id
+        from comments
+        where parent_id = #{parentId}
+          and is_deleted = 0
     </select>
 
     <select id="countRepliesByCommentId" resultType="java.lang.Long">
-        select count(*) from comments
-        where parent_id = #{commentId} and is_deleted = 0
+        select count(*)
+        from comments
+        where parent_id = #{commentId}
+          and is_deleted = 0
     </select>
 
     <!-- 批量查询评论统计（回复数 + 点赞数），供统计缓存重建/兜底使用 -->
     <select id="getCommentStatsByIds" resultType="com.jun.vo.ReplyCountVO">
         select c.id as commentId,
-               c.likes_count as likesCount,
-               count(r.id) as count
+        c.likes_count as likesCount,
+        count(r.id) as count
         from comments c
         left join comments r on r.parent_id = c.id and r.is_deleted = 0
         where c.id in
@@ -81,27 +106,41 @@
     </select>
 
     <update id="updateStatusCommentCount">
-        update statuses set comments_count = comments_count + 1 where id = #{statusId}
+        update statuses
+        set comments_count = comments_count + 1
+        where id = #{statusId}
     </update>
 
     <update id="softDeleteComment">
-        update comments set is_deleted = 1 where id = #{commentId}
+        update comments
+        set is_deleted = 1
+        where id = #{commentId}
     </update>
 
     <update id="softDeleteRepliesByParentId">
-        update comments set is_deleted = 1 where parent_id = #{parentId} and is_deleted = 0
+        update comments
+        set is_deleted = 1
+        where parent_id = #{parentId}
+          and is_deleted = 0
     </update>
 
     <update id="softDeleteCommentsByStatusId">
-        update comments set is_deleted = 1 where status_id = #{statusId} and is_deleted = 0
+        update comments
+        set is_deleted = 1
+        where status_id = #{statusId}
+          and is_deleted = 0
     </update>
 
     <select id="countNonDeletedReplies" resultType="java.lang.Integer">
-        select count(*) from comments
-        where parent_id = #{parentId} and is_deleted = 0
+        select count(*)
+        from comments
+        where parent_id = #{parentId}
+          and is_deleted = 0
     </select>
 
     <update id="decreaseStatusCommentCount">
-        update statuses set comments_count = GREATEST(0, comments_count - #{count}) where id = #{statusId}
+        update statuses
+        set comments_count = GREATEST(0, comments_count - #{count})
+        where id = #{statusId}
     </update>
 </mapper>

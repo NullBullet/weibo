@@ -1,13 +1,10 @@
 package com.jun.mapper;
 
-import com.jun.dto.RepostDTO;
 import com.jun.dto.ToggleLikeDTO;
 import com.jun.entity.Statuses;
 import com.jun.vo.LikeRecordVO;
-import com.jun.vo.StatusVO;
 import org.apache.ibatis.annotations.*;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 @Mapper

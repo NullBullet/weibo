@@ -25,14 +25,13 @@ import static com.jun.config.RabbitMQConfig.WEIBO_TOPIC_EXCHANGE;
 @Component
 public class RewardDrawTask {
 
+    private static final Random RANDOM = new Random();
     @Resource
     private RewardActivityMapper rewardActivityMapper;
     @Resource
     private RabbitTemplate rabbitTemplate;
     @Resource
     private RedisTemplate redisTemplate;
-
-    private static final Random RANDOM = new Random();
 
     /**
      * 每分钟执行一次，检查需要开奖的活动

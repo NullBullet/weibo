@@ -17,11 +17,6 @@ public enum TargetType {
         this.desc = desc;
     }
 
-    @JsonValue
-    public int getCode() {
-        return code;
-    }
-
     @JsonCreator
     public static TargetType fromValue(Integer code) {
         if (code == null) {
@@ -33,5 +28,10 @@ public enum TargetType {
             }
         }
         throw new IllegalArgumentException("targetType 非法: " + code);
+    }
+
+    @JsonValue
+    public int getCode() {
+        return code;
     }
 }

@@ -1,11 +1,8 @@
 package com.jun.dto;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
-import com.jun.enumeration.SearchType;
 import lombok.Data;
 
 import java.io.Serializable;
-import java.time.LocalDate;
 
 @Data
 public class SearchUsersDTO implements Serializable {

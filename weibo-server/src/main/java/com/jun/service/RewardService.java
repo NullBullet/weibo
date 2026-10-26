@@ -1,7 +1,6 @@
 package com.jun.service;
 
 import com.jun.dto.CreateRewardActivityDTO;
-import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.vo.ExtensionVO;
 

@@ -9,17 +9,10 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
-import static com.jun.constant.RedisConstants.USER_STATS_KEY;
-import static com.jun.constant.RedisConstants.USER_STATS_LOCK_KEY;
-import static com.jun.constant.RedisConstants.USER_STATS_LOCK_TTL_SECONDS;
-import static com.jun.constant.RedisConstants.USER_STATS_TTL;
+import static com.jun.constant.RedisConstants.*;
 import static java.time.Duration.ofSeconds;
 
 /**
@@ -44,11 +37,15 @@ public class UserStatsHelper {
     private static final List<String> REQUIRED_FIELDS = List.of(
             FIELD_FOLLOWING_COUNT, FIELD_FOLLOWERS_COUNT, FIELD_LIKES_COUNT);
 
-    /** 等待他人重建的轮询参数：10 次 x 100ms，超时后降级直读数据库 */
+    /**
+     * 等待他人重建的轮询参数：10 次 x 100ms，超时后降级直读数据库
+     */
     private static final int WAIT_RETRY_TIMES = 10;
     private static final long WAIT_INTERVAL_MS = 100L;
 
-    /** 释放锁的 Lua 脚本：仅当锁 value 与自己写入的一致时才删除，防止误删他人的锁 */
+    /**
+     * 释放锁的 Lua 脚本：仅当锁 value 与自己写入的一致时才删除，防止误删他人的锁
+     */
     private static final RedisScript<Long> UNLOCK_SCRIPT = new DefaultRedisScript<>(
             "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
             Long.class);
@@ -57,6 +54,17 @@ public class UserStatsHelper {
     private RedisTemplate redisTemplate;
     @Resource
     private UsersMapper usersMapper;
+
+    /**
+     * 从统计 Map 中读取 int 字段（兼容 Number 与字符串两种反序列化结果）
+     */
+    public static int getInt(Map<?, ?> stats, String field) {
+        Object val = stats.get(field);
+        if (val == null) {
+            return 0;
+        }
+        return val instanceof Number n ? n.intValue() : Integer.parseInt(val.toString());
+    }
 
     /**
      * 获取用户统计。缓存 miss（丢失或残缺）时从数据库重建。
@@ -233,16 +241,5 @@ public class UserStatsHelper {
         } catch (Exception e) {
             log.warn("释放重建锁失败（等待过期自动释放）: lockKey={}", lockKey, e);
         }
-    }
-
-    /**
-     * 从统计 Map 中读取 int 字段（兼容 Number 与字符串两种反序列化结果）
-     */
-    public static int getInt(Map<?, ?> stats, String field) {
-        Object val = stats.get(field);
-        if (val == null) {
-            return 0;
-        }
-        return val instanceof Number n ? n.intValue() : Integer.parseInt(val.toString());
     }
 }

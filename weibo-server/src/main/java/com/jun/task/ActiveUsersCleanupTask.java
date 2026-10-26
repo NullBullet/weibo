@@ -15,7 +15,9 @@ import static com.jun.constant.RedisConstants.ACTIVE_USERS_KEY;
 @Component
 public class ActiveUsersCleanupTask {
 
-    /** 7 天毫秒数 */
+    /**
+     * 7 天毫秒数
+     */
     private static final long SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000L;
 
     @Resource

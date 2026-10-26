@@ -3,7 +3,6 @@ package com.jun.service.impl;
 import com.jun.config.RabbitMQConfig;
 import com.jun.context.BaseContext;
 import com.jun.dto.StatusesImageDTO;
-import com.jun.entity.Statuses;
 import com.jun.exception.StatusPublishException;
 import com.jun.mapper.StatusesMapper;
 import com.jun.mq.message.DeletePostMessage;
@@ -27,7 +26,8 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import static com.jun.constant.MessageConstant.STATUS_PUBLISH_FAIL;
-import static com.jun.constant.RedisConstants.*;
+import static com.jun.constant.RedisConstants.POST_STATS_KEY;
+import static com.jun.constant.RedisConstants.POST_STATS_TTL;
 
 @Slf4j
 @Service
@@ -49,9 +49,9 @@ public class StatusesServiceImpl implements StatusesService {
         SaveStatusVO saveStatusVO = new SaveStatusVO();
         saveStatusVO.setContent(statusesImageDTO.getContent());
 
-        int isSuccess1 = statusesMapper.saveStatus(userId,saveStatusVO);
+        int isSuccess1 = statusesMapper.saveStatus(userId, saveStatusVO);
         Long statusId = saveStatusVO.getStatusId();
-        if (isSuccess1 <=0) {
+        if (isSuccess1 <= 0) {
             log.error("微博id获取异常");
             throw new StatusPublishException(STATUS_PUBLISH_FAIL);
         }
@@ -66,13 +66,13 @@ public class StatusesServiceImpl implements StatusesService {
 
         String postStatsKey = POST_STATS_KEY + statusId;
         Map<String, Object> map = new HashMap<>();
-        map.put("likeCount",0);
-        map.put("commentCount",0);
-        map.put("forwardCount",0);
-        map.put("viewCount",0);
+        map.put("likeCount", 0);
+        map.put("commentCount", 0);
+        map.put("forwardCount", 0);
+        map.put("viewCount", 0);
         long createTime = saveStatusVO.getCreatedAt().toEpochSecond(ZoneOffset.UTC);
         map.put("createTime", createTime);
-        redisTemplate.opsForHash().putAll(postStatsKey,map);
+        redisTemplate.opsForHash().putAll(postStatsKey, map);
         redisTemplate.expire(postStatsKey, POST_STATS_TTL, TimeUnit.SECONDS);
 
         // 条件写：key 存在则增量维护，缺失则全量重建（避免半截快照导致主页缺历史微博）

@@ -31,15 +31,21 @@ public interface FollowMapper {
     @Select("select id, created_at from statuses where user_id = #{userId} and is_deleted = 0 order by created_at desc limit 200")
     List<Statuses> getRecentPostsByUserId(@Param("userId") Long userId);
 
-    /** 我关注了谁：user_following 中 follower_id = 我的 followee_id 列表 */
+    /**
+     * 我关注了谁：user_following 中 follower_id = 我的 followee_id 列表
+     */
     @Select("select followee_id from user_following where follower_id = #{userId}")
     List<Long> getFollowingIds(@Param("userId") Long userId);
 
-    /** 谁关注了我：user_follower 中 followee_id = 我的 follower_id 列表 */
+    /**
+     * 谁关注了我：user_follower 中 followee_id = 我的 follower_id 列表
+     */
     @Select("select follower_id from user_follower where followee_id = #{userId}")
     List<Long> getFansIds(@Param("userId") Long userId);
 
-    /** 批量取多个用户最近的未删除帖子（仅 id + createTime），用于重建收件箱（SQL 见 FollowMapper.xml） */
+    /**
+     * 批量取多个用户最近的未删除帖子（仅 id + createTime），用于重建收件箱（SQL 见 FollowMapper.xml）
+     */
     List<Statuses> getRecentPostsByUserIds(@Param("userIds") List<Long> userIds,
                                            @Param("limit") int limit);
 }

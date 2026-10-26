@@ -58,14 +58,14 @@ public interface RewardActivityMapper {
     Integer getParticipantLimitById(@Param("id") Long id);
 
     void insertWinNotification(@Param("userId") Long userId,
-                                @Param("activityId") Long activityId,
-                                @Param("content") String content);
+                               @Param("activityId") Long activityId,
+                               @Param("content") String content);
 
     List<RewardActivity> getByStatusIds(@Param("statusIds") List<Long> statusIds);
 
     List<SystemNotificationVO> getSystemNotifications(@Param("userId") Long userId,
-                                                       @Param("offset") Integer offset,
-                                                       @Param("pageSize") Integer pageSize);
+                                                      @Param("offset") Integer offset,
+                                                      @Param("pageSize") Integer pageSize);
 
     Integer countSystemNotifications(@Param("userId") Long userId);
 

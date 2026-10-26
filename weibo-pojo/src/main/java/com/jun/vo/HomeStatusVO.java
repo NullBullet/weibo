@@ -80,9 +80,13 @@ public class HomeStatusVO implements Serializable {
 
     private List<UserVO> user;
 
-    /** 图片列表 (核心：将 StatusImage 转换为 URL 列表) */
+    /**
+     * 图片列表 (核心：将 StatusImage 转换为 URL 列表)
+     */
     private List<StatusImage> images;
 
-    /** 扩展信息（抽奖活动等） */
+    /**
+     * 扩展信息（抽奖活动等）
+     */
     private List<ExtensionVO> extensions;
 }

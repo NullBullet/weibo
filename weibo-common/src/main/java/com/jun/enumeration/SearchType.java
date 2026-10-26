@@ -4,8 +4,8 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import lombok.Getter;
 
 public enum SearchType {
-    COMPREHENSION(0,"综合"),
-    REALTIME(1,"实时");
+    COMPREHENSION(0, "综合"),
+    REALTIME(1, "实时");
 
     @Getter
     private final int code;
@@ -17,7 +17,7 @@ public enum SearchType {
     }
 
     @JsonCreator
-    public static SearchType fromValue(int code){
+    public static SearchType fromValue(int code) {
         for (SearchType type : values()) {
             if (type.code == code) {
                 return type;

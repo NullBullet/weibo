@@ -61,7 +61,7 @@ public class HotRankTask {
             // 清理冷帖子
             if (score <= 0) {
                 redisTemplate.opsForSet().remove(HOT_POST_CANDIDATE_KEY, postId);
-                redisTemplate.opsForZSet().remove(HOT_POST_ZSET_KEY,postId);
+                redisTemplate.opsForZSet().remove(HOT_POST_ZSET_KEY, postId);
             }
         }
     }

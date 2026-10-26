@@ -9,7 +9,6 @@ import org.springframework.data.redis.cache.RedisCacheWriter;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
-import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
@@ -52,11 +51,11 @@ public class RedisConfig {
     public RedisCacheManager redisCacheManager(RedisTemplate redisTemplate) {
         // 创建 RedisCacheWriter，nonLockingRedisCacheWriter 表示不使用锁机制进行缓存操作
         RedisCacheWriter redisCacheWriter = RedisCacheWriter.nonLockingRedisCacheWriter(redisTemplate.getConnectionFactory());
-        
+
         // 配置 RedisCacheConfiguration，指定缓存值的序列化方式，使用 RedisTemplate 中配置的 ValueSerializer 进行序列化
         RedisCacheConfiguration redisCacheConfiguration = RedisCacheConfiguration.defaultCacheConfig()
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(redisTemplate.getValueSerializer()));
-        
+
         // 返回配置好的 RedisCacheManager
         return new RedisCacheManager(redisCacheWriter, redisCacheConfiguration);
     }

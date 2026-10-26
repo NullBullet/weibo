@@ -12,9 +12,9 @@ import org.springframework.context.annotation.Configuration;
 public class OssConfiguration {
     @Bean
     @ConditionalOnMissingBean
-    public OssUtil ossUtil(OssProperties ossProperties){
+    public OssUtil ossUtil(OssProperties ossProperties) {
         log.info("创建阿里云文件上传工具类对象");
-        return new OssUtil(ossProperties.getEndpoint(),ossProperties.getAccessKeyId(),
-                ossProperties.getAccessKeySecret(),ossProperties.getBucketName());
+        return new OssUtil(ossProperties.getEndpoint(), ossProperties.getAccessKeyId(),
+                ossProperties.getAccessKeySecret(), ossProperties.getBucketName());
     }
 }

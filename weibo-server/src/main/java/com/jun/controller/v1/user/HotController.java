@@ -5,14 +5,17 @@ import com.jun.dto.ScrollDTO;
 import com.jun.properties.JwtProperties;
 import com.jun.result.Result;
 import com.jun.result.ScrollResult;
+import com.jun.service.HotService;
 import com.jun.utils.JwtUtil;
 import com.jun.vo.HotTopicVO;
-import com.jun.service.HotService;
 import io.jsonwebtoken.Claims;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
@@ -29,8 +32,8 @@ public class HotController {
     private JwtProperties jwtProperties;
 
     @GetMapping("/topics")
-    public Result<List<HotTopicVO>> topics(@RequestParam(value = "size", required = false) Integer size){
-        log.info("获取热搜话题榜{}",size);
+    public Result<List<HotTopicVO>> topics(@RequestParam(value = "size", required = false) Integer size) {
+        log.info("获取热搜话题榜{}", size);
         return hotService.topics(size);
     }
 
@@ -38,37 +41,37 @@ public class HotController {
     // 计算热度分(互动总分 = 点赞数 + 评论数*3 + 转发数*5)
     // log_10(互动总分+1)/(小时数+2)^1.8
     @GetMapping("/posts")
-    public Result<ScrollResult> posts(ScrollDTO scrollDTO, HttpServletRequest request){
-        log.info("获取热门微博{}",scrollDTO);
+    public Result<ScrollResult> posts(ScrollDTO scrollDTO, HttpServletRequest request) {
+        log.info("获取热门微博{}", scrollDTO);
 
         Long currentUserId = BaseContext.getCurrentId();
-        if(currentUserId==null){
-                // 1. 从 Header 中获取 Authorization
-                // 前端传的是 Authorization
-                String token = request.getHeader("Authorization");
+        if (currentUserId == null) {
+            // 1. 从 Header 中获取 Authorization
+            // 前端传的是 Authorization
+            String token = request.getHeader("Authorization");
 
-                // 2. 判断 Token 是否为空
-                if (token != null && !token.isEmpty()) {
-                    try {
-                        // 3. 直接解析 Token (因为你的 Token 没有 Bearer 前缀，所以不需要 substring)
-                        // 注意：如果 token 是非法的或者过期的，parseJWT 会抛出异常，会被下方的 catch 捕获
-                        Claims claims = JwtUtil.parseJWT(jwtProperties.getUserSecretKey(), token);
+            // 2. 判断 Token 是否为空
+            if (token != null && !token.isEmpty()) {
+                try {
+                    // 3. 直接解析 Token (因为你的 Token 没有 Bearer 前缀，所以不需要 substring)
+                    // 注意：如果 token 是非法的或者过期的，parseJWT 会抛出异常，会被下方的 catch 捕获
+                    Claims claims = JwtUtil.parseJWT(jwtProperties.getUserSecretKey(), token);
 
-                        // 4. 从 Claims 中提取 userId
-                        // 注意：claims.get("userId") 返回的是 Object，需要转成 String 再转 Long
-                        Object userIdObj = claims.get(USER_ID);
-                        if (userIdObj != null) {
-                            currentUserId = Long.valueOf(userIdObj.toString());
-                            log.info("用户已登录，解析到 ID: {}", currentUserId);
-                        }
-                    } catch (Exception e) {
-                        log.warn("Token 解析失败: {}", e.getMessage());
+                    // 4. 从 Claims 中提取 userId
+                    // 注意：claims.get("userId") 返回的是 Object，需要转成 String 再转 Long
+                    Object userIdObj = claims.get(USER_ID);
+                    if (userIdObj != null) {
+                        currentUserId = Long.valueOf(userIdObj.toString());
+                        log.info("用户已登录，解析到 ID: {}", currentUserId);
                     }
-                } else {
-                    log.info("请求头中未包含 Token，视为游客访问");
+                } catch (Exception e) {
+                    log.warn("Token 解析失败: {}", e.getMessage());
                 }
+            } else {
+                log.info("请求头中未包含 Token，视为游客访问");
             }
-        log.info("用户id为：{}",currentUserId);
-        return hotService.getPosts(scrollDTO,currentUserId);
         }
+        log.info("用户id为：{}", currentUserId);
+        return hotService.getPosts(scrollDTO, currentUserId);
     }
+}

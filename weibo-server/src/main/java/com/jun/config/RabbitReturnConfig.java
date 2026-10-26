@@ -16,13 +16,13 @@ public class RabbitReturnConfig {
     @PostConstruct
     public void init() {
         rabbitTemplate.setReturnsCallback(returned -> {
-                log.error(
-                    "消息路由失败！exchange={}, routingKey={}, message={}",
-                    returned.getExchange(),
-                    returned.getRoutingKey(),
-                    returned.getMessage()
-                );
-            }
+                    log.error(
+                            "消息路由失败！exchange={}, routingKey={}, message={}",
+                            returned.getExchange(),
+                            returned.getRoutingKey(),
+                            returned.getMessage()
+                    );
+                }
         );
     }
 }

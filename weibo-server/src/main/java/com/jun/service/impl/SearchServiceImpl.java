@@ -1,6 +1,5 @@
 package com.jun.service.impl;
 
-import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.json.JSONUtil;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
@@ -13,13 +12,16 @@ import com.jun.mapper.SearchMapper;
 import com.jun.model.ScoredPost;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
-import com.jun.service.SearchService;
 import com.jun.service.RewardService;
+import com.jun.service.SearchService;
 import com.jun.utils.FollowSetHelper;
 import com.jun.utils.HotScoreCalculator;
 import com.jun.utils.LikeSetHelper;
 import com.jun.utils.PostStatsHelper;
-import com.jun.vo.*;
+import com.jun.vo.ExtensionVO;
+import com.jun.vo.SearchStatusVO;
+import com.jun.vo.SearchUserVO;
+import com.jun.vo.UserVO;
 import jakarta.annotation.Resource;
 import org.springframework.data.redis.connection.RedisStringCommands;
 import org.springframework.data.redis.core.RedisCallback;
@@ -27,7 +29,6 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.types.Expiration;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
@@ -514,7 +515,7 @@ public class SearchServiceImpl implements SearchService {
 
     @Override
     public Result users(SearchUsersDTO searchUsersDTO) {
-        PageHelper.startPage(searchUsersDTO.getPage(),searchUsersDTO.getPageSize());
+        PageHelper.startPage(searchUsersDTO.getPage(), searchUsersDTO.getPageSize());
         Page<SearchUserVO> page = searchMapper.getUsers(searchUsersDTO);
         List<SearchUserVO> records = page.getResult();
 
@@ -536,7 +537,7 @@ public class SearchServiceImpl implements SearchService {
         }
 
         long total = page.getTotal();
-        return Result.success(new PageResult(total,records));
+        return Result.success(new PageResult(total, records));
     }
 
     private void fillOriginalStatus(List<SearchStatusVO> finalList, Long currentUserId) {

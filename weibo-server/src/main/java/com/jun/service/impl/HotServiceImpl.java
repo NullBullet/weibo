@@ -4,18 +4,17 @@ import cn.hutool.json.JSONUtil;
 import com.jun.dto.ScrollDTO;
 import com.jun.entity.StatusImage;
 import com.jun.enumeration.TargetType;
+import com.jun.mapper.HotMapper;
 import com.jun.result.Result;
 import com.jun.result.ScrollResult;
-import com.jun.service.RewardService;
-import com.jun.vo.ExtensionVO;
-import com.jun.vo.HotStatusVO;
-import com.jun.vo.HotTopicVO;
-import com.jun.vo.StatusVO;
-import com.jun.mapper.HotMapper;
 import com.jun.service.HotService;
+import com.jun.service.RewardService;
 import com.jun.utils.FollowSetHelper;
 import com.jun.utils.LikeSetHelper;
 import com.jun.utils.PostStatsHelper;
+import com.jun.vo.ExtensionVO;
+import com.jun.vo.HotStatusVO;
+import com.jun.vo.HotTopicVO;
 import com.jun.vo.UserVO;
 import jakarta.annotation.Resource;
 import org.springframework.data.redis.connection.RedisStringCommands;
@@ -99,7 +98,7 @@ public class HotServiceImpl implements HotService {
             String json = jsonList.get(i);
             Long id = statusIds.get(i);
 
-            if (json!=null&&!json.isEmpty()) {
+            if (json != null && !json.isEmpty()) {
                 HotStatusVO vo = JSONUtil.toBean(json, HotStatusVO.class);
                 // 缓存中不存嵌套，读时强制重新查找原微博
                 if (vo.getOriginalStatusId() != null && vo.getOriginalStatus() != null) {

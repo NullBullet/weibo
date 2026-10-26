@@ -1,6 +1,5 @@
 package com.jun.mapper;
 
-import com.jun.WeiboServerApplicationTests;
 import com.jun.entity.Comment;
 import com.jun.entity.Statuses;
 import com.jun.entity.User;
@@ -30,8 +29,8 @@ public interface TestMapper {
 
     @org.apache.ibatis.annotations.Update("update user_statistics set following_count = #{followingCount}, followers_count = #{followersCount} where user_id = #{userId}")
     int updateUserFollowCounts(@org.apache.ibatis.annotations.Param("userId") Long userId,
-                                @org.apache.ibatis.annotations.Param("followingCount") int followingCount,
-                                @org.apache.ibatis.annotations.Param("followersCount") int followersCount);
+                               @org.apache.ibatis.annotations.Param("followingCount") int followingCount,
+                               @org.apache.ibatis.annotations.Param("followersCount") int followersCount);
 
     // ======================== 通知表初始化 ========================
 

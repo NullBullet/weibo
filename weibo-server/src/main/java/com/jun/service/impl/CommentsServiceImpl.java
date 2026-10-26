@@ -16,13 +16,8 @@ import com.jun.mq.message.CommentMessage;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.service.CommentsService;
-import com.jun.utils.HotScoreCalculator;
-import com.jun.utils.LikeSetHelper;
-import com.jun.utils.PostStatsHelper;
-import com.jun.utils.UserStatsHelper;
-import com.jun.utils.CommentStatsHelper;
+import com.jun.utils.*;
 import com.jun.vo.CommentVO;
-import com.jun.vo.ReplyCountVO;
 import com.jun.vo.ToggleLikeVO;
 import com.jun.vo.UserVO;
 import jakarta.annotation.Resource;
@@ -42,9 +37,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import static com.jun.config.RabbitMQConfig.COMMENT_CREATE;
-import static com.jun.config.RabbitMQConfig.COMMENT_LIKE;
-import static com.jun.config.RabbitMQConfig.COMMENT_LIKE_CANCEL;
+import static com.jun.config.RabbitMQConfig.*;
 import static com.jun.constant.RedisConstants.*;
 
 @Slf4j

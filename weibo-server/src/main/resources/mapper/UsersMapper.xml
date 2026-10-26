@@ -17,25 +17,25 @@
     </update>
     <select id="getPostByUserId" resultType="com.jun.vo.StatusVO">
         select *from statuses
-                <where>
-                    <if test="q != null and q!=''">and content like concat("%",#{q},"%")</if>
-                    <if test="userId!=null">and user_id = #{userId}</if>
-                    and is_deleted = 0
-                </where>
+        <where>
+            <if test="q != null and q!=''">and content like concat("%",#{q},"%")</if>
+            <if test="userId!=null">and user_id = #{userId}</if>
+            and is_deleted = 0
+        </where>
         order by created_at desc
     </select>
-    <select id="getImageByIds" resultType="com.jun.entity.StatusImage" >
+    <select id="getImageByIds" resultType="com.jun.entity.StatusImage">
         select *from status_images where status_id in
-            <foreach collection="ids" item="image" open="(" close=")" separator=",">
-                #{image}
-            </foreach>
+        <foreach collection="ids" item="image" open="(" close=")" separator=",">
+            #{image}
+        </foreach>
     </select>
     <select id="getPostByMissIds" resultType="com.jun.vo.StatusVO">
         select *from statuses where id in
-            <foreach collection="missIds" item="id" separator="," open="(" close=")">
-                #{id}
-            </foreach>
-            and is_deleted = 0
+        <foreach collection="missIds" item="id" separator="," open="(" close=")">
+            #{id}
+        </foreach>
+        and is_deleted = 0
     </select>
     <select id="getPostByIds" resultType="com.jun.vo.StatusVO">
         select s.*,u.id as "user.id",u.nickname as "user.nickname", u.avatar as "user.avatar"
@@ -49,7 +49,8 @@
 
     <select id="getFollowingList" resultType="com.jun.vo.FollowUserVO">
         select u.id, u.username, u.nickname, u.avatar, u.bio
-        from user_following f join users u on f.followee_id = u.id
+        from user_following f
+                 join users u on f.followee_id = u.id
         where f.follower_id = #{userId}
           and (#{keyword} is null or u.nickname like concat('%', #{keyword}, '%'))
         order by f.id desc
@@ -57,8 +58,9 @@
 
     <select id="getFollowingActiveList" resultType="com.jun.vo.FollowUserVO">
         select u.id, u.username, u.nickname, u.avatar, u.bio
-        from user_following f join users u on f.followee_id = u.id
-        left join statuses s on f.followee_id = s.user_id and s.is_deleted = 0
+        from user_following f
+                 join users u on f.followee_id = u.id
+                 left join statuses s on f.followee_id = s.user_id and s.is_deleted = 0
         where f.follower_id = #{userId}
           and (#{keyword} is null or u.nickname like concat('%', #{keyword}, '%'))
         group by u.id, u.username, u.nickname, u.avatar, u.bio
@@ -67,7 +69,8 @@
 
     <select id="getFollowerList" resultType="com.jun.vo.FollowUserVO">
         select u.id, u.username, u.nickname, u.avatar, u.bio
-        from user_follower f join users u on f.follower_id = u.id
+        from user_follower f
+                 join users u on f.follower_id = u.id
         where f.followee_id = #{userId}
           and (#{keyword} is null or u.nickname like concat('%', #{keyword}, '%'))
         order by f.id desc

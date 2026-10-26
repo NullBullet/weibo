@@ -12,10 +12,14 @@ import lombok.Data;
 @AllArgsConstructor
 public class MessageSaveResult {
 
-    /** 保存后的消息（首次创建的新消息，或重放命中的原消息） */
+    /**
+     * 保存后的消息（首次创建的新消息，或重放命中的原消息）
+     */
     private ChatMessageVO message;
 
-    /** 是否为幂等重放 */
+    /**
+     * 是否为幂等重放
+     */
     private boolean replay;
 
     public static MessageSaveResult created(ChatMessageVO message) {

@@ -3,8 +3,11 @@
 <mapper namespace="com.jun.mapper.NotificationsMapper">
 
     <select id="getLikeNotifications" resultType="com.jun.vo.NotificationRawVO">
-        select id as notificationId, target_type as targetType, target_id as targetId,
-               like_count as likeCount, last_like_time as lastLikeTime
+        select id             as notificationId,
+               target_type    as targetType,
+               target_id      as targetId,
+               like_count     as likeCount,
+               last_like_time as lastLikeTime
         from notification_like
         where receiver_id = #{receiverId}
         order by last_like_time desc
@@ -15,7 +18,7 @@
         from statuses
         where id in
         <foreach collection="postIds" item="id" open="(" close=")" separator=",">#{id}</foreach>
-          and is_deleted = 0
+        and is_deleted = 0
     </select>
 
     <select id="getCommentContents" resultType="map">
@@ -23,26 +26,29 @@
         from comments
         where id in
         <foreach collection="commentIds" item="id" open="(" close=")" separator=",">#{id}</foreach>
-          and is_deleted = 0
+        and is_deleted = 0
     </select>
 
     <select id="getBatchRecentLikers" resultType="map">
         select a.target_id as targetId, a.user_id as id, u.nickname, u.avatar
         from attitudes a join users u on a.user_id = u.id
         where a.target_type = #{targetType}
-          and a.target_id in
+        and a.target_id in
         <foreach collection="targetIds" item="tid" open="(" close=")" separator=",">#{tid}</foreach>
         order by a.created_at desc
     </select>
 
     <select id="getLikeUsers" resultType="com.jun.vo.LikeUserVO">
-        select a.user_id as id, u.nickname, u.avatar,
+        select a.user_id                                      as id,
+               u.nickname,
+               u.avatar,
                DATE_FORMAT(a.created_at, '%Y-%m-%d %H:%i:%s') as likeTime
         from attitudes a
-        join users u on a.user_id = u.id
+                 join users u on a.user_id = u.id
         where a.target_type = #{targetType}
           and a.target_id = #{targetId}
-        order by a.created_at desc limit 20
+        order by a.created_at desc
+        limit 20
     </select>
 
     <select id="countLike" resultType="int">
@@ -60,24 +66,25 @@
     </select>
 
     <select id="getOwnerByTargetId" resultType="long">
-        select case when #{targetType} = 1
-            then (select user_id from statuses where id = #{targetId})
-            else (select user_id from comments where id = #{targetId})
-        end
+        select case
+                   when #{targetType} = 1
+                       then (select user_id from statuses where id = #{targetId})
+                   else (select user_id from comments where id = #{targetId})
+                   end
     </select>
 
     <insert id="upsertLikeNotification">
-        insert into notification_like(receiver_id, target_type, target_id, like_count, last_like_time, is_read, create_time)
-        values(#{receiverId}, #{targetType}, #{targetId}, 1, NOW(), 0, NOW())
-        on duplicate key update
-            like_count = like_count + 1,
-            last_like_time = NOW(),
-            is_read = 0
+        insert into notification_like(receiver_id, target_type, target_id, like_count, last_like_time, is_read,
+                                      create_time)
+        values (#{receiverId}, #{targetType}, #{targetId}, 1, NOW(), 0, NOW())
+        on duplicate key update like_count     = like_count + 1,
+                                last_like_time = NOW(),
+                                is_read        = 0
     </insert>
 
     <update id="decrementLikeNotification">
         update notification_like
-        set like_count = like_count - 1,
+        set like_count     = like_count - 1,
             last_like_time = NOW()
         where receiver_id = #{receiverId}
           and target_type = #{targetType}
@@ -85,7 +92,8 @@
     </update>
 
     <delete id="deleteZeroCount">
-        delete from notification_like
+        delete
+        from notification_like
         where receiver_id = #{receiverId}
           and target_type = #{targetType}
           and target_id = #{targetId}
@@ -93,9 +101,13 @@
     </delete>
 
     <select id="getCommentNotifications" resultType="com.jun.dto.CommentNotificationRawDTO">
-        select id as notificationId, sender_id as senderId, target_type as targetType,
-               target_id as targetId, comment_id as commentId,
-               create_time as createTime, is_read as isRead
+        select id          as notificationId,
+               sender_id   as senderId,
+               target_type as targetType,
+               target_id   as targetId,
+               comment_id  as commentId,
+               create_time as createTime,
+               is_read     as isRead
         from notification_comment
         where receiver_id = #{receiverId}
         order by create_time desc
@@ -109,8 +121,9 @@
     </select>
 
     <insert id="insertCommentNotification">
-        insert into notification_comment(receiver_id, sender_id, target_type, target_id, comment_id, is_read, create_time)
-        values(#{receiverId}, #{senderId}, #{targetType}, #{targetId}, #{commentId}, 0, NOW())
+        insert into notification_comment(receiver_id, sender_id, target_type, target_id, comment_id, is_read,
+                                         create_time)
+        values (#{receiverId}, #{senderId}, #{targetType}, #{targetId}, #{commentId}, 0, NOW())
     </insert>
 
 </mapper>

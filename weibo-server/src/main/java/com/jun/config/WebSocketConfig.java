@@ -35,10 +35,10 @@ public class WebSocketConfig implements WebSocketConfigurer {
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         // WebSocket 连接地址交给 ChatWebSocketHandler 处理
         registry.addHandler(
-                chatWebSocketHandler,
-                "/ws/chat"
-        )
-        .addInterceptors(jwtHandshakeInterceptor)
-        .setAllowedOrigins(allowedOrigins);
+                        chatWebSocketHandler,
+                        "/ws/chat"
+                )
+                .addInterceptors(jwtHandshakeInterceptor)
+                .setAllowedOrigins(allowedOrigins);
     }
 }

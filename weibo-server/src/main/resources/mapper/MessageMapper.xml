@@ -11,26 +11,28 @@
 
     <update id="updateConversationLastMessage">
         update conversation
-        set last_message = #{lastMessage}, last_message_time = #{lastMessageTime}
+        set last_message      = #{lastMessage},
+            last_message_time = #{lastMessageTime}
         where id = #{conversationId}
     </update>
 
     <select id="selectConversationById" resultType="com.jun.entity.Conversation">
-        select * from conversation where id = #{id}
+        select *
+        from conversation
+        where id = #{id}
     </select>
 
     <select id="selectConversationList" resultType="com.jun.vo.ConversationVO">
-        select
-            cu.conversation_id as conversationId,
-            cu.unread_count as unreadCount,
-            case when c.user1_id = #{userId} then c.user2_id else c.user1_id end as otherUserId,
-            u.nickname,
-            u.avatar,
-            c.last_message as lastMessage,
-            date_format(c.last_message_time, '%Y-%m-%d %H:%i:%s') as lastMessageTime
+        select cu.conversation_id                                                   as conversationId,
+               cu.unread_count                                                      as unreadCount,
+               case when c.user1_id = #{userId} then c.user2_id else c.user1_id end as otherUserId,
+               u.nickname,
+               u.avatar,
+               c.last_message                                                       as lastMessage,
+               date_format(c.last_message_time, '%Y-%m-%d %H:%i:%s')                as lastMessageTime
         from conversation_user cu
-        join conversation c on cu.conversation_id = c.id
-        join users u on (case when c.user1_id = #{userId} then c.user2_id else c.user1_id end) = u.id
+                 join conversation c on cu.conversation_id = c.id
+                 join users u on (case when c.user1_id = #{userId} then c.user2_id else c.user1_id end) = u.id
         where cu.user_id = #{userId}
         order by c.last_message_time desc
     </select>
@@ -45,7 +47,8 @@
     <update id="incrementUnreadCount">
         update conversation_user
         set unread_count = unread_count + 1
-        where conversation_id = #{conversationId} and user_id = #{userId}
+        where conversation_id = #{conversationId}
+          and user_id = #{userId}
           and (last_read_message_id is null or last_read_message_id &lt; #{messageId})
     </update>
 
@@ -53,17 +56,18 @@
          last_read_message_id 单调推进，避免与并发 incrementUnreadCount 的 +1 互相覆盖丢计数 -->
     <update id="decreaseUnreadCount">
         update conversation_user
-        set unread_count = greatest(unread_count - #{markedCount}, 0),
+        set unread_count         = greatest(unread_count - #{markedCount}, 0),
             last_read_message_id = #{lastMessageId}
-        where conversation_id = #{conversationId} and user_id = #{userId}
+        where conversation_id = #{conversationId}
+          and user_id = #{userId}
           and (last_read_message_id is null or last_read_message_id &lt; #{lastMessageId})
     </update>
 
     <!-- ==================== PrivateMessage ==================== -->
 
     <insert id="insertMessage" useGeneratedKeys="true" keyProperty="id">
-        insert into private_message (conversation_id, sender_id, receiver_id, content, create_time,client_message_id)
-        values (#{conversationId}, #{senderId}, #{receiverId}, #{content}, #{createTime},#{clientMessageId})
+        insert into private_message (conversation_id, sender_id, receiver_id, content, create_time, client_message_id)
+        values (#{conversationId}, #{senderId}, #{receiverId}, #{content}, #{createTime}, #{clientMessageId})
     </insert>
 
     <!-- 只标记已读基准点之前（id <= lastMessageId）的未读消息，
@@ -71,29 +75,29 @@
     <update id="updateMessagesRead">
         update private_message
         set is_read = 1
-        where conversation_id = #{conversationId} and receiver_id = #{userId} and is_read = 0
+        where conversation_id = #{conversationId}
+          and receiver_id = #{userId}
+          and is_read = 0
           and id &lt;= #{lastMessageId}
     </update>
 
     <select id="selectMessagesByPage" resultType="com.jun.vo.MessageVO">
-        select
-            id as messageId,
-            sender_id as senderId,
-            content,
-            date_format(create_time, '%Y-%m-%d %H:%i:%s') as createTime
+        select id                                            as messageId,
+               sender_id                                     as senderId,
+               content,
+               date_format(create_time, '%Y-%m-%d %H:%i:%s') as createTime
         from private_message
         where conversation_id = #{conversationId}
-        order by create_time desc , id desc
+        order by create_time desc, id desc
     </select>
 
     <select id="selectUnreadMessages" resultType="com.jun.vo.MessageVO">
-        select
-            id as messageId,
-            sender_id as senderId,
-            receiver_id as receiverId,
-            conversation_id as conversationId,
-            content,
-            date_format(create_time, '%Y-%m-%d %H:%i:%s') as createTime
+        select id                                            as messageId,
+               sender_id                                     as senderId,
+               receiver_id                                   as receiverId,
+               conversation_id                               as conversationId,
+               content,
+               date_format(create_time, '%Y-%m-%d %H:%i:%s') as createTime
         from private_message
         where receiver_id = #{userId}
           and is_read = 0
@@ -103,7 +107,8 @@
     <select id="getUserUnReadCount" resultType="java.lang.Long">
         select unread_count
         from conversation_user
-        where user_id = #{UserId} and unread_count != 0;
+        where user_id = #{UserId}
+          and unread_count != 0;
     </select>
 
     <select id="selectBySenderAndClientMessageId" resultType="com.jun.entity.PrivateMessage">
@@ -122,6 +127,7 @@
         where sender_id = #{senderId}
           and client_message_id = #{clientMessageId}
         limit 1
-        for update
+        for
+        update
     </select>
 </mapper>

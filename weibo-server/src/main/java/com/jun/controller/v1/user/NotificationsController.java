@@ -16,26 +16,26 @@ public class NotificationsController {
 
     //todo:Redis缓存未读数、Redis缓存最近点赞用户
     @GetMapping("/likes")
-    public Result like(){
+    public Result like() {
         log.info("获取当前用户的获取当前用户收到的点赞聚合通知列表");
         return notificationsService.getLikeInfo();
     }
 
     @GetMapping("/likes/{targetId}")
-    public Result likeDetail(@PathVariable Integer targetId){
-        log.info("获取{}的点赞用户详情",targetId);
+    public Result likeDetail(@PathVariable Integer targetId) {
+        log.info("获取{}的点赞用户详情", targetId);
         return notificationsService.getLikeDetail(targetId);
     }
 
     @GetMapping("/comments")
-    public Result comment(){
+    public Result comment() {
         log.info("获取当前用户收到的评论列表");
         return notificationsService.getCommentInfo();
     }
 
     @GetMapping("/system")
     public Result systemNotifications(@RequestParam(required = false, defaultValue = "1") Integer page,
-                                       @RequestParam(required = false, defaultValue = "20") Integer pageSize) {
+                                      @RequestParam(required = false, defaultValue = "20") Integer pageSize) {
         log.info("获取系统通知列表: page={}, pageSize={}", page, pageSize);
         return notificationsService.getSystemNotifications(page, pageSize);
     }

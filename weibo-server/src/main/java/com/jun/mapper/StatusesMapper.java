@@ -3,11 +3,7 @@ package com.jun.mapper;
 import com.jun.dto.StatusesImageDTO;
 import com.jun.entity.Statuses;
 import com.jun.vo.SaveStatusVO;
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.MapKey;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
-import org.apache.ibatis.annotations.Update;
+import org.apache.ibatis.annotations.*;
 
 import java.util.List;
 

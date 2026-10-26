@@ -10,18 +10,10 @@ import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
 import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
-import static com.jun.constant.RedisConstants.POST_STATS_KEY;
-import static com.jun.constant.RedisConstants.POST_STATS_LOCK_KEY;
-import static com.jun.constant.RedisConstants.POST_STATS_LOCK_TTL_SECONDS;
-import static com.jun.constant.RedisConstants.POST_STATS_TTL;
+import static com.jun.constant.RedisConstants.*;
 import static java.time.Duration.ofSeconds;
 
 /**
@@ -29,8 +21,8 @@ import static java.time.Duration.ofSeconds;
  * - 读取命中且字段完整时刷新 TTL（活跃帖子不过期，冷数据 7 天后自动过期回收）
  * - 读取 miss（key 丢失或 hash 残缺）时从数据库重建缓存，避免 key 丢失导致业务不可用
  * - 重建使用 SET NX PX 分布式锁 + 锁内 double-check，防止并发惊群重复重建；
- *   抢不到锁的请求短暂等待后降级读库并同样 HSETNX 写回（无锁安全），保证
- *   后续 HINCRBY 一定作用在完整基线上，不阻塞业务
+ * 抢不到锁的请求短暂等待后降级读库并同样 HSETNX 写回（无锁安全），保证
+ * 后续 HINCRBY 一定作用在完整基线上，不阻塞业务
  * - 重建写回使用 HSETNX 逐字段补齐，不覆盖已有字段，避免丢失并发 HINCRBY 的增量
  * <p>
  * 注意：数据库不维护 views_count，重建后浏览量从 0 开始计数
@@ -49,11 +41,15 @@ public class PostStatsHelper {
             FIELD_LIKE_COUNT, FIELD_COMMENT_COUNT, FIELD_FORWARD_COUNT,
             FIELD_VIEW_COUNT, FIELD_CREATE_TIME);
 
-    /** 等待他人重建的轮询参数：10 次 x 100ms，超时后降级直读数据库 */
+    /**
+     * 等待他人重建的轮询参数：10 次 x 100ms，超时后降级直读数据库
+     */
     private static final int WAIT_RETRY_TIMES = 10;
     private static final long WAIT_INTERVAL_MS = 100L;
 
-    /** 释放锁的 Lua 脚本：仅当锁 value 与自己写入的一致时才删除，防止误删他人的锁 */
+    /**
+     * 释放锁的 Lua 脚本：仅当锁 value 与自己写入的一致时才删除，防止误删他人的锁
+     */
     private static final RedisScript<Long> UNLOCK_SCRIPT = new DefaultRedisScript<>(
             "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
             Long.class);
@@ -62,6 +58,17 @@ public class PostStatsHelper {
     private RedisTemplate redisTemplate;
     @Resource
     private StatusesMapper statusesMapper;
+
+    /**
+     * 从统计 Map 中读取 int 字段（兼容 Number 与字符串两种反序列化结果）
+     */
+    public static int getInt(Map<?, ?> stats, String field) {
+        Object val = stats.get(field);
+        if (val == null) {
+            return 0;
+        }
+        return val instanceof Number n ? n.intValue() : Integer.parseInt(val.toString());
+    }
 
     /**
      * 批量获取帖子统计，返回结果与 ids 等长且顺序一致。
@@ -285,16 +292,5 @@ public class PostStatsHelper {
         map.put(FIELD_CREATE_TIME, s.getCreatedAt() == null ? 0L
                 : s.getCreatedAt().toEpochSecond(ZoneOffset.UTC));
         return map;
-    }
-
-    /**
-     * 从统计 Map 中读取 int 字段（兼容 Number 与字符串两种反序列化结果）
-     */
-    public static int getInt(Map<?, ?> stats, String field) {
-        Object val = stats.get(field);
-        if (val == null) {
-            return 0;
-        }
-        return val instanceof Number n ? n.intValue() : Integer.parseInt(val.toString());
     }
 }

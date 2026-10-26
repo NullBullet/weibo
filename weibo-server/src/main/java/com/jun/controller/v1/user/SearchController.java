@@ -7,7 +7,9 @@ import com.jun.result.Result;
 import com.jun.service.SearchService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @Slf4j
 @RestController
@@ -18,9 +20,9 @@ public class SearchController {
     private SearchService searchService;
 
     @GetMapping("/weibos")
-    public Result results(SearchResultDTO searchResultDTO){
+    public Result results(SearchResultDTO searchResultDTO) {
         SearchType type = searchResultDTO.getSearchType();
-        switch (type){
+        switch (type) {
             case COMPREHENSION:
                 return searchService.comprehensionResults(searchResultDTO);
             case REALTIME://从新到旧
@@ -30,8 +32,8 @@ public class SearchController {
     }
 
     @GetMapping("/users")
-    public Result users(SearchUsersDTO searchUsersDTO){
-        log.info("搜索用户{}",searchUsersDTO);
+    public Result users(SearchUsersDTO searchUsersDTO) {
+        log.info("搜索用户{}", searchUsersDTO);
         return searchService.users(searchUsersDTO);
     }
 

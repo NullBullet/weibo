@@ -17,32 +17,27 @@ import java.util.concurrent.TimeUnit;
  * <p>
  * - TTL：重建与写入时 7 天，避免关系集合永久占用内存；
  * - 写路径（关注/取关）：SADD/SREM 前条件重建，保证返回值反映数据库真实状态——
- *   key 丢失时若直接 SADD 会形成只含本次关注者的半截快照，FeedConsumer 据此推送将
- *   漏掉该用户全部其他粉丝；SREM 在 key 缺失时空转，关系永远无法从缓存移除；
+ * key 丢失时若直接 SADD 会形成只含本次关注者的半截快照，FeedConsumer 据此推送将
+ * 漏掉该用户全部其他粉丝；SREM 在 key 缺失时空转，关系永远无法从缓存移除；
  * - 读路径（isFollowed 展示、粉丝推送）：miss 时从数据库重建兜底，
- *   FOLLOW_FANS_KEY 丢失会导致粉丝全部收不到新微博（消息仍被 ACK，无补偿机会）；
+ * FOLLOW_FANS_KEY 丢失会导致粉丝全部收不到新微博（消息仍被 ACK，无补偿机会）；
  * - 空集合哨兵：无关注/无粉丝时不落真实成员，仅写哨兵成员 "0" 占位使 key 存在并带 TTL，
- *   避免每次访问都触发重建查库；userId 恒为正整数，哨兵不影响 isMember/contains 判断，
- *   唯一需要跳过哨兵的是遍历推送收件箱的 FeedConsumer。
+ * 避免每次访问都触发重建查库；userId 恒为正整数，哨兵不影响 isMember/contains 判断，
+ * 唯一需要跳过哨兵的是遍历推送收件箱的 FeedConsumer。
  */
 @Slf4j
 @Component
 public class FollowSetHelper {
 
-    /** 空集合哨兵成员：userId 恒为正整数，"0" 不会与真实用户冲突 */
+    /**
+     * 空集合哨兵成员：userId 恒为正整数，"0" 不会与真实用户冲突
+     */
     public static final String EMPTY_SENTINEL = "0";
 
     @Resource
     private RedisTemplate redisTemplate;
     @Resource
     private FollowMapper followMapper;
-
-    private enum Type {
-        /** 我关注了谁，数据源 user_following */
-        FOLLOWING,
-        /** 谁关注了我，数据源 user_follower */
-        FANS
-    }
 
     private String keyOf(Type type, Long userId) {
         return (type == Type.FOLLOWING
@@ -130,5 +125,16 @@ public class FollowSetHelper {
         });
         log.info("重建关注关系缓存: type={}, userId={}, count={}",
                 type, userId, members == null ? 0 : members.size());
+    }
+
+    private enum Type {
+        /**
+         * 我关注了谁，数据源 user_following
+         */
+        FOLLOWING,
+        /**
+         * 谁关注了我，数据源 user_follower
+         */
+        FANS
     }
 }

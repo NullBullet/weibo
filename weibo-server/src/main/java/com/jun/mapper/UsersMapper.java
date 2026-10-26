@@ -6,16 +6,11 @@ import com.jun.dto.UserProfileDTO;
 import com.jun.entity.StatusImage;
 import com.jun.entity.Statuses;
 import com.jun.entity.User;
-import com.jun.entity.UserStatistics;
 import com.jun.vo.FollowUserVO;
 import com.jun.vo.StatusVO;
 import com.jun.vo.UserCountVO;
 import com.jun.vo.UsersInfoVO;
-import org.apache.ibatis.annotations.Insert;
-import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
-import org.apache.ibatis.annotations.Update;
+import org.apache.ibatis.annotations.*;
 
 import java.util.List;
 
@@ -30,7 +25,7 @@ public interface UsersMapper {
     @Select("select id,nickname,avatar,bio,userType from users where id=#{userId}")
     UsersInfoVO getUserInfoWithoutStats(@Param("userId") Long userId);
 
-    int updateProfile(@Param("dto") UserProfileDTO userProfileDTO,@Param("userId") Long userId);
+    int updateProfile(@Param("dto") UserProfileDTO userProfileDTO, @Param("userId") Long userId);
 
     @Select("select nickname,bio,avatar,gender,birthday,relationship_status,hometown from users where id = #{userId}")
     UserProfileDTO getProfile(Long userId);

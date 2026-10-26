@@ -4,8 +4,8 @@ import com.jun.config.RabbitMQConfig;
 import com.jun.context.BaseContext;
 import com.jun.dto.RepostDTO;
 import com.jun.dto.ToggleLikeDTO;
-import com.jun.mapper.PostMapper;
 import com.jun.enumeration.TargetType;
+import com.jun.mapper.PostMapper;
 import com.jun.mq.message.LikeMessage;
 import com.jun.mq.message.RepostMessage;
 import com.jun.result.Result;
@@ -29,9 +29,7 @@ import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.UUID;
 
-import static com.jun.config.RabbitMQConfig.POST_CANCEL;
-import static com.jun.config.RabbitMQConfig.POST_LIKE;
-import static com.jun.config.RabbitMQConfig.POST_REPOST;
+import static com.jun.config.RabbitMQConfig.*;
 import static com.jun.constant.RedisConstants.*;
 import static java.lang.Long.parseLong;
 
@@ -52,6 +50,23 @@ public class PostServiceImpl implements PostService {
     private UserStatsHelper userStatsHelper;
     @Resource
     private LikeSetHelper likeSetHelper;
+
+    /**
+     * 统计字段安全解析：缺失或脏数据返回 0，不抛异常
+     */
+    private static long parseStatLong(Object value) {
+        if (value == null) {
+            return 0L;
+        }
+        if (value instanceof Number n) {
+            return n.longValue();
+        }
+        try {
+            return parseLong(value.toString());
+        } catch (NumberFormatException e) {
+            return 0L;
+        }
+    }
 
     @Transactional
     @Override
@@ -209,23 +224,6 @@ public class PostServiceImpl implements PostService {
         redisTemplate.opsForSet().add(HOT_POST_CANDIDATE_KEY, statusId.toString());
 
         return Result.success(toggleLikeVO);
-    }
-
-    /**
-     * 统计字段安全解析：缺失或脏数据返回 0，不抛异常
-     */
-    private static long parseStatLong(Object value) {
-        if (value == null) {
-            return 0L;
-        }
-        if (value instanceof Number n) {
-            return n.longValue();
-        }
-        try {
-            return parseLong(value.toString());
-        } catch (NumberFormatException e) {
-            return 0L;
-        }
     }
 
     @Override

@@ -3,7 +3,6 @@ package com.jun.service.impl;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import com.jun.context.BaseContext;
-import com.jun.vo.*;
 import com.jun.dto.MessageQueryDTO;
 import com.jun.dto.MessageReadDTO;
 import com.jun.entity.Conversation;
@@ -17,6 +16,7 @@ import com.jun.mapper.MessageMapper;
 import com.jun.mapper.UsersMapper;
 import com.jun.result.Result;
 import com.jun.service.MessageService;
+import com.jun.vo.*;
 import com.jun.websocket.ChatWebSocketHandler;
 import jakarta.annotation.Resource;
 import org.springframework.dao.DuplicateKeyException;
@@ -33,7 +33,9 @@ import java.util.Objects;
 @Service
 public class MessageServiceImpl implements MessageService {
 
-    /** 历史消息单页条数上限，防止超大 pageSize 一次拉取过多数据 */
+    /**
+     * 历史消息单页条数上限，防止超大 pageSize 一次拉取过多数据
+     */
     private static final int MAX_PAGE_SIZE = 100;
 
     @Resource
@@ -206,7 +208,7 @@ public class MessageServiceImpl implements MessageService {
             // 冲突行必已提交（若未提交会先在 insert 上等锁），
             // 用 FOR UPDATE 当前读补偿查询，避免 REPEATABLE READ 快照看不到并发已提交记录导致虚假失败
             existing = messageMapper.selectBySenderAndClientMessageIdForUpdate(
-                            senderId, clientMessageId);
+                    senderId, clientMessageId);
 
             if (existing == null) {
                 throw e;
@@ -287,7 +289,7 @@ public class MessageServiceImpl implements MessageService {
 
         // 未读消息数量推送
         Long userUnReadCount = messageService.getUserUnReadCount(userId);
-        chatWebSocketHandler.sendUnreadCount(userId,userUnReadCount);
+        chatWebSocketHandler.sendUnreadCount(userId, userUnReadCount);
 
         return Result.success();
     }
@@ -300,7 +302,7 @@ public class MessageServiceImpl implements MessageService {
         Conversation conv = messageMapper.selectConversationById(conversationId);
         if (conv == null
                 || (!conv.getUser1Id().equals(currentUserId)
-                    && !conv.getUser2Id().equals(currentUserId))) {
+                && !conv.getUser2Id().equals(currentUserId))) {
             throw new SessionNotFoundException("会话不存在");
         }
         return conv;

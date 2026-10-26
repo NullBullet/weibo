@@ -33,7 +33,7 @@ public class HotScoreCalculator {
         // Math.log10(x + 1) 防止 log(0) 报错，同时压缩数值量级
         double viewPart = Math.log10(viewCount + 1);
         double interactionPart = Math.log10(interactionScore + 1);
-        
+
         double numerator = viewPart + interactionPart;
 
         // 4. 分母：时间衰减

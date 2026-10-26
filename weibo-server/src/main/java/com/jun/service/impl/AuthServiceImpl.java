@@ -8,16 +8,16 @@ import com.jun.entity.User;
 import com.jun.exception.AccountLockedException;
 import com.jun.exception.AccountNotFoundException;
 import com.jun.exception.PasswordErrorException;
+import com.jun.mapper.AuthMapper;
+import com.jun.mapper.UsersMapper;
 import com.jun.mq.message.LoginLogMessage;
 import com.jun.properties.JwtProperties;
 import com.jun.result.Result;
+import com.jun.service.AuthService;
 import com.jun.utils.CaptchaUtil;
 import com.jun.utils.JwtUtil;
 import com.jun.vo.CaptchaVO;
 import com.jun.vo.UserLoginVO;
-import com.jun.mapper.AuthMapper;
-import com.jun.mapper.UsersMapper;
-import com.jun.service.AuthService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
@@ -33,13 +33,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import static com.jun.constant.JwtClaimsConstant.USER_ID;
-import static com.jun.constant.RedisConstants.CAPTCHA_KEY;
-import static com.jun.constant.RedisConstants.CAPTCHA_TTL;
-import static com.jun.constant.RedisConstants.IP_CAPTCHA_KEY;
-import static com.jun.constant.RedisConstants.IP_LOGIN_KEY;
-import static com.jun.constant.RedisConstants.LOGIN_FAIL_KEY;
-import static com.jun.constant.RedisConstants.USER_STATS_KEY;
-import static com.jun.constant.RedisConstants.USER_STATS_TTL;
+import static com.jun.constant.RedisConstants.*;
 import static com.jun.constant.StatusConstant.ENABLE;
 
 @Slf4j

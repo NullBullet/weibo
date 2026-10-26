@@ -1,15 +1,9 @@
 package com.jun.service;
 
-import com.jun.vo.ChatMessageVO;
-import com.jun.vo.MessageSaveResult;
 import com.jun.dto.MessageQueryDTO;
 import com.jun.dto.MessageReadDTO;
-import com.jun.dto.SendDTO;
 import com.jun.result.Result;
-import com.jun.vo.MessageVO;
-
-import java.io.IOException;
-import java.util.List;
+import com.jun.vo.MessageSaveResult;
 
 public interface MessageService {
     Result getOrCreatConversation(Long targetUserId);

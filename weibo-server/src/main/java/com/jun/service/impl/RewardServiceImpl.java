@@ -10,11 +10,7 @@ import com.jun.mq.message.RewardJoinMessage;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.service.RewardService;
-import com.jun.vo.ExtensionVO;
-import com.jun.vo.ParticipantVO;
-import com.jun.vo.RewardActivityVO;
-import com.jun.vo.RewardRecordVO;
-import com.jun.vo.WinnerVO;
+import com.jun.vo.*;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -28,15 +24,9 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
-import static com.jun.constant.RedisConstants.MQ_IDEMPOTENT_KEY;
 import static com.jun.constant.RedisConstants.REWARD_ACTIVITY_INFO_KEY;
 import static com.jun.constant.RedisConstants.REWARD_ACTIVITY_STATUS_KEY;
 

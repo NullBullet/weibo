@@ -42,10 +42,10 @@
     </select>
     <select id="getPostByIds" resultType="com.jun.vo.SearchStatusVO">
         select * from statuses where id in
-            <foreach collection="missIds" item="id" open="(" close=")" separator=",">
-                #{id}
-            </foreach>
-            and is_deleted = 0
+        <foreach collection="missIds" item="id" open="(" close=")" separator=",">
+            #{id}
+        </foreach>
+        and is_deleted = 0
     </select>
     <select id="countResults" resultType="java.lang.Long">
         select count(0) from statuses

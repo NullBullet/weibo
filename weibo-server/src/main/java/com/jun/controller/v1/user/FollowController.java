@@ -17,21 +17,22 @@ public class FollowController {
     private FollowService followService;
 
     @GetMapping("/check")
-    public Result<Boolean> check(Long userId){
-        log.info("是否关注：{}",userId );
+    public Result<Boolean> check(Long userId) {
+        log.info("是否关注：{}", userId);
         return followService.check(userId);
     }
 
     //todo 未保证原子性
     @PostMapping("/follow")
-    public Result follow(@RequestBody FollowRequestDTO followRequestDTO){
-        log.info("关注：{}",followRequestDTO);
-        return followService.follow(BaseContext.getCurrentId(),followRequestDTO.getUserId());
+    public Result follow(@RequestBody FollowRequestDTO followRequestDTO) {
+        log.info("关注：{}", followRequestDTO);
+        return followService.follow(BaseContext.getCurrentId(), followRequestDTO.getUserId());
     }
+
     //todo 未保证原子性
     @PostMapping("/unfollow")
-    public Result unfollow(@RequestBody FollowRequestDTO followRequestDTO){
-        log.info("取关：{}",followRequestDTO);
-        return followService.unfollow(BaseContext.getCurrentId(),followRequestDTO.getUserId());
+    public Result unfollow(@RequestBody FollowRequestDTO followRequestDTO) {
+        log.info("取关：{}", followRequestDTO);
+        return followService.unfollow(BaseContext.getCurrentId(), followRequestDTO.getUserId());
     }
 }

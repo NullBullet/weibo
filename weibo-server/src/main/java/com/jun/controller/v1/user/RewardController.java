@@ -1,8 +1,6 @@
 package com.jun.controller.v1.user;
 
-import com.jun.context.BaseContext;
 import com.jun.dto.CreateRewardActivityDTO;
-import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.service.RewardService;
 import jakarta.annotation.Resource;

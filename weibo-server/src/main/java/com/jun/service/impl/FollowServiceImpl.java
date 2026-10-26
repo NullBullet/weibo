@@ -1,22 +1,22 @@
 package com.jun.service.impl;
 
 import com.jun.context.BaseContext;
+import com.jun.entity.Statuses;
 import com.jun.exception.FollowFailException;
+import com.jun.mapper.FollowMapper;
 import com.jun.result.Result;
 import com.jun.service.FollowService;
-import com.jun.entity.Statuses;
-import com.jun.mapper.FollowMapper;
 import com.jun.utils.FeedHelper;
 import com.jun.utils.FollowSetHelper;
 import com.jun.utils.UserStatsHelper;
 import jakarta.annotation.Resource;
-
-import java.time.ZoneOffset;
-import java.util.List;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.ZoneOffset;
+import java.util.List;
 
 import static com.jun.constant.MessageConstant.FOLLOW_FAIL;
 import static com.jun.constant.MessageConstant.UNFOLLOW_FAIL;
@@ -50,8 +50,8 @@ public class FollowServiceImpl implements FollowService {
         followSetHelper.ensureFollowing(currentUserId);
         followSetHelper.ensureFans(targetUserId);
 
-        if(followMapper.saveFollower(currentUserId,targetUserId)<=0||
-                followMapper.saveFollowing(currentUserId, targetUserId) <= 0){
+        if (followMapper.saveFollower(currentUserId, targetUserId) <= 0 ||
+                followMapper.saveFollowing(currentUserId, targetUserId) <= 0) {
             throw new FollowFailException(FOLLOW_FAIL);
         }
 
@@ -109,8 +109,8 @@ public class FollowServiceImpl implements FollowService {
         followSetHelper.ensureFollowing(currentUserId);
         followSetHelper.ensureFans(targetUserId);
 
-        if (followMapper.deleteFollower(currentUserId,targetUserId)<=0||
-        followMapper.deleteFollowing(currentUserId,targetUserId)<=0) {
+        if (followMapper.deleteFollower(currentUserId, targetUserId) <= 0 ||
+                followMapper.deleteFollowing(currentUserId, targetUserId) <= 0) {
             throw new FollowFailException(UNFOLLOW_FAIL);
         }
 

@@ -2,7 +2,7 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
 <mapper namespace="com.jun.mapper.StatusesMapper">
     <insert id="saveStatus" useGeneratedKeys="true" keyProperty="saveStatusVO.statusId">
-        insert into statuses(user_id,content) value(#{userId},#{saveStatusVO.content})
+        insert into statuses(user_id, content) value (#{userId}, #{saveStatusVO.content})
     </insert>
     <insert id="saveStatusImages">
         insert into status_images(status_id, image_url,image_order) value
@@ -13,14 +13,14 @@
 
     <select id="selectStatsByIds" resultType="com.jun.entity.Statuses">
         select id,
-               attitudes_count as attitudesCount,
-               comments_count  as commentsCount,
-               reposts_count   as repostsCount,
-               views_count     as viewsCount,
-               created_at      as createdAt
+        attitudes_count as attitudesCount,
+        comments_count as commentsCount,
+        reposts_count as repostsCount,
+        views_count as viewsCount,
+        created_at as createdAt
         from statuses
         where is_deleted = 0
-          and id in
+        and id in
         <foreach collection="ids" item="id" open="(" separator="," close=")">
             #{id}
         </foreach>

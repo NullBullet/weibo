@@ -6,9 +6,11 @@
     <select id="getPosts" resultType="com.jun.vo.HomeStatusVO">
         select * from statuses
         <where>
-            <if test="query.keyword !=null and query.keyword!=''">and content like concat("%",#{query.keyword},"%") </if>
-            <if test="query.startDate !=null and query.endDate!=null">and created_at between #{query.startDate} and #{query.endDate}</if>
-            <if test="followingIds!= null and followingIds.size() > 0"> and user_id in
+            <if test="query.keyword !=null and query.keyword!=''">and content like concat("%",#{query.keyword},"%")</if>
+            <if test="query.startDate !=null and query.endDate!=null">and created_at between #{query.startDate} and
+                #{query.endDate}
+            </if>
+            <if test="followingIds!= null and followingIds.size() > 0">and user_id in
                 <foreach collection="followingIds" item="id" open="(" close=")" separator=",">
                     #{id}
                 </foreach>

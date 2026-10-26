@@ -8,30 +8,14 @@ import com.jun.mapper.RewardActivityMapper;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.service.NotificationsService;
-import com.jun.vo.CommentNotificationVO;
-import com.jun.vo.LikeDetailVO;
-import com.jun.vo.LikeNotificationVO;
-import com.jun.vo.LikeUserVO;
-import com.jun.vo.NotificationRawVO;
-import com.jun.vo.SenderVO;
-import com.jun.vo.SimpleUserVO;
-import com.jun.vo.SystemNotificationVO;
+import com.jun.vo.*;
 import jakarta.annotation.Resource;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 import static com.jun.constant.RedisConstants.LIKE_COMMENT_KEY;
 
@@ -206,7 +190,7 @@ public class NotificationsServiceImpl implements NotificationsService {
         List<Map<String, Object>> commentRows = cidList.isEmpty()
                 ? Collections.emptyList()
                 : notificationsMapper.getCommentContents(
-                        cidList.stream().map(Long::intValue).toList());
+                cidList.stream().map(Long::intValue).toList());
         Map<Long, String> commentContentMap = buildContentMapById(commentRows);
 
         // 5. 批量查目标内容（帖子 + 评论）
@@ -214,14 +198,14 @@ public class NotificationsServiceImpl implements NotificationsService {
         List<Map<String, Object>> postRows = ptidList.isEmpty()
                 ? Collections.emptyList()
                 : notificationsMapper.getPostContents(
-                        ptidList.stream().map(Long::intValue).toList());
+                ptidList.stream().map(Long::intValue).toList());
         Map<Long, String> postContentMap = buildContentMapById(postRows);
 
         List<Long> ctidList = new ArrayList<>(commentTargetIds);
         List<Map<String, Object>> ctRows = ctidList.isEmpty()
                 ? Collections.emptyList()
                 : notificationsMapper.getCommentContents(
-                        ctidList.stream().map(Long::intValue).toList());
+                ctidList.stream().map(Long::intValue).toList());
         Map<Long, String> commentTargetContentMap = buildContentMapById(ctRows);
 
         // 6. 组装 VO

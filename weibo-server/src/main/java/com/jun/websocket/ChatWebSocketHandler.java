@@ -4,9 +4,9 @@ import cn.hutool.json.JSONUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jun.dto.ChatMessageDTO;
+import com.jun.service.MessageService;
 import com.jun.vo.ChatMessageVO;
 import com.jun.vo.MessageSaveResult;
-import com.jun.service.MessageService;
 import com.jun.vo.NotifyUnreadCountVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -32,23 +32,27 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @Component
 public class ChatWebSocketHandler extends TextWebSocketHandler {
 
+    // userId -> 该用户的活跃连接列表（支持同一用户多标签页同时在线，推送广播到全部连接）
+    private final Map<Long, List<WebSocketSession>> safeOnlineUsers = new ConcurrentHashMap<>();
     @Resource
     private ObjectMapper objectMapper;
     @Resource
     private MessageService messageService;
-
-    // userId -> 该用户的活跃连接列表（支持同一用户多标签页同时在线，推送广播到全部连接）
-    private final Map<Long, List<WebSocketSession>> safeOnlineUsers = new ConcurrentHashMap<>();
-
-    /** CHAT 消息发送频率限制：每秒补充令牌数，<=0 表示关闭限流 */
+    /**
+     * CHAT 消息发送频率限制：每秒补充令牌数，<=0 表示关闭限流
+     */
     @Value("${jun.websocket.chat-rate-limit.rate:10}")
     private int chatRateLimit;
 
-    /** CHAT 消息发送频率限制：令牌桶容量（允许的瞬时突发量） */
+    /**
+     * CHAT 消息发送频率限制：令牌桶容量（允许的瞬时突发量）
+     */
     @Value("${jun.websocket.chat-rate-limit.burst:20}")
     private int chatRateBurst;
 
-    /** 连接空闲超时（秒）：超过该时间未收到任何消息（含 PING）的连接将被服务端关闭 */
+    /**
+     * 连接空闲超时（秒）：超过该时间未收到任何消息（含 PING）的连接将被服务端关闭
+     */
     @Value("${jun.websocket.idle-timeout-seconds:300}")
     private int idleTimeoutSeconds;
 
@@ -77,12 +81,12 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         safeOnlineUsers.computeIfAbsent(userId, k -> new CopyOnWriteArrayList<>())
                 .add(safeSession);
 
-        log.info("用户 {} WebSocket连接成功",userId);
-        log.info("sessionId = {}",safeSession.getId());
+        log.info("用户 {} WebSocket连接成功", userId);
+        log.info("sessionId = {}", safeSession.getId());
 
         // 未读消息数量推送
         Long userUnReadCount = messageService.getUserUnReadCount(userId);
-        sendUnreadCount(safeSession,userUnReadCount);
+        sendUnreadCount(safeSession, userUnReadCount);
     }
 
     // 客户端发送文本消息时执行
@@ -139,7 +143,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
             // 2.1 捕获 JSON 解析异常
         } catch (JsonProcessingException e) {
-            log.warn("WebSocket 收到非法 JSON，userId={}",session.getAttributes().get("userId"));
+            log.warn("WebSocket 收到非法 JSON，userId={}", session.getAttributes().get("userId"));
             sendError(senderSession, "消息格式错误", null);
             return;
         }
@@ -227,7 +231,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
             // 未读消息数量推送
             Long userUnReadCount = messageService.getUserUnReadCount(messageVO.getReceiverId());
-            sendUnreadCount(targetSessions,userUnReadCount);
+            sendUnreadCount(targetSessions, userUnReadCount);
 
             // 日志脱敏：不输出私信正文，仅保留 ID 与内容长度用于排查
             log.info(
@@ -264,7 +268,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             }
         }
 
-        log.info("WebSocket连接关闭，用户：{}，sessionId = {}",userId,session.getId());
+        log.info("WebSocket连接关闭，用户：{}，sessionId = {}", userId, session.getId());
     }
 
     // 根据 userId 查找 Session，适用于 HTTP 请求等场景

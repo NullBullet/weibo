@@ -7,8 +7,8 @@ import com.jun.dto.UserProfileDTO;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.result.ScrollResult;
-import com.jun.vo.UsersInfoVO;
 import com.jun.service.UsersService;
+import com.jun.vo.UsersInfoVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -22,25 +22,25 @@ public class UsersController {
     private UsersService usersService;
 
     @GetMapping("/me")
-    public Result<UsersInfoVO> me(){
+    public Result<UsersInfoVO> me() {
         log.info("获取用户详细信息（含统计数据）");
         return usersService.me();
     }
 
     @PutMapping("/me/profile")
-    public Result<String> profile(UserProfileDTO userProfileDTO,MultipartFile avatarFile){
-        log.info("更新用户资料{}",userProfileDTO);
-        return usersService.updateProfile(userProfileDTO,avatarFile);
+    public Result<String> profile(UserProfileDTO userProfileDTO, MultipartFile avatarFile) {
+        log.info("更新用户资料{}", userProfileDTO);
+        return usersService.updateProfile(userProfileDTO, avatarFile);
     }
 
     @GetMapping("/me/profile")
-    public Result<UserProfileDTO> profile(){
+    public Result<UserProfileDTO> profile() {
         log.info("获取用户资料");
         return usersService.getProfile();
     }
 
     @GetMapping("/me/posts")
-    public Result<PageResult> posts(StatusPageQueryDTO StatusPageQueryDTO){
+    public Result<PageResult> posts(StatusPageQueryDTO StatusPageQueryDTO) {
         log.info("获取用户个人帖子记录{}", StatusPageQueryDTO);
         return usersService.getPost(StatusPageQueryDTO);
     }

@@ -5,7 +5,6 @@ import com.jun.context.BaseContext;
 import com.jun.dto.HomeQueryDTO;
 import com.jun.entity.StatusImage;
 import com.jun.enumeration.TargetType;
-import com.jun.enumeration.TimelineType;
 import com.jun.mapper.HotMapper;
 import com.jun.result.Result;
 import com.jun.result.ScrollResult;
@@ -21,9 +20,9 @@ import com.jun.vo.UserVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.connection.RedisStringCommands;
+import org.springframework.data.redis.core.DefaultTypedTuple;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.DefaultTypedTuple;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.types.Expiration;
 import org.springframework.stereotype.Service;
@@ -163,10 +162,16 @@ public class HomeServiceImpl implements HomeService {
             int startIdx = -1;
             for (int i = 0; i < all.size(); i++) {
                 UnifiedPost u = all.get(i);
-                if (u.unifiedScore < lastScore) { startIdx = i; break; }
-                else if (u.unifiedScore == lastScore) {
-                    if (skip < offset) { skip++; continue; }
-                    startIdx = i; break;
+                if (u.unifiedScore < lastScore) {
+                    startIdx = i;
+                    break;
+                } else if (u.unifiedScore == lastScore) {
+                    if (skip < offset) {
+                        skip++;
+                        continue;
+                    }
+                    startIdx = i;
+                    break;
                 }
             }
             if (startIdx < 0) {
@@ -205,7 +210,7 @@ public class HomeServiceImpl implements HomeService {
      * 根据 statusIds 从缓存/DB 获取帖子详情，构建返回结果
      */
     private Result buildResult(Long userId, List<Long> statusIds,
-                                Set<ZSetOperations.TypedTuple<String>> tuples) {
+                               Set<ZSetOperations.TypedTuple<String>> tuples) {
         // 1. 批量从缓存获取帖子详情
         List<String> keys = statusIds.stream().map(id -> POST_DETAIL_KEY + id).toList();
         List<String> jsonList = redisTemplate.opsForValue().multiGet(keys);
@@ -414,10 +419,6 @@ public class HomeServiceImpl implements HomeService {
 
     // ======================== 记录类型 ========================
 
-    private record UnifiedPost(Long id, double unifiedScore, double createTime) {}
-
-    // ======================== 以下为私有辅助方法 ========================
-
     private void fillOriginalStatus(List<HotStatusVO> finalList, Long currentUserId) {
         List<Long> originalIds = finalList.stream()
                 .filter(vo -> vo.getOriginalStatusId() != null)
@@ -511,6 +512,8 @@ public class HomeServiceImpl implements HomeService {
         }
     }
 
+    // ======================== 以下为私有辅助方法 ========================
+
     private void fillPostStats(HotStatusVO vo) {
         Map<Object, Object> stats = postStatsHelper.getStats(vo.getId());
         if (stats == null) {
@@ -524,5 +527,8 @@ public class HomeServiceImpl implements HomeService {
         vo.setCommentsCount(PostStatsHelper.getInt(stats, "commentCount"));
         vo.setRepostsCount(PostStatsHelper.getInt(stats, "forwardCount"));
         vo.setViewsCount(PostStatsHelper.getInt(stats, "viewCount"));
+    }
+
+    private record UnifiedPost(Long id, double unifiedScore, double createTime) {
     }
 }

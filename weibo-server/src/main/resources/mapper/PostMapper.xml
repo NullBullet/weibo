@@ -3,7 +3,8 @@
 <mapper namespace="com.jun.mapper.PostMapper">
 
     <insert id="saveForwardStatus" useGeneratedKeys="true" keyProperty="id">
-        insert into statuses(user_id, content, status_type, original_status_id, created_at) values (#{userId},#{content},#{statusType},#{originalStatusId},#{createdAt})
+        insert into statuses(user_id, content, status_type, original_status_id, created_at)
+        values (#{userId}, #{content}, #{statusType}, #{originalStatusId}, #{createdAt})
     </insert>
 
     <!-- 批量查询点赞记录（attitudes 表），供点赞集合缓存重建/兜底使用；target_type: 1 帖子 / 2 评论 -->

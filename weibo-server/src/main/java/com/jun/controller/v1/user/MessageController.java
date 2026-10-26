@@ -17,32 +17,32 @@ public class MessageController {
     private MessageService messageService;
 
     @GetMapping("/conversation/{targetUserId}")
-    public Result getOrCreatConversation(@PathVariable Long targetUserId){
-        log.info("创建或获取会话：{}",targetUserId);
+    public Result getOrCreatConversation(@PathVariable Long targetUserId) {
+        log.info("创建或获取会话：{}", targetUserId);
         return messageService.getOrCreatConversation(targetUserId);
     }
 
     @GetMapping("/conversations")
-    public Result getConversations(){
+    public Result getConversations() {
         log.info("获取会话列表");
         return messageService.getConversations();
     }
 
     @GetMapping("/conversation/detail/{conversationId}")
-    public Result getConversationDetail(@PathVariable Long conversationId){
-        log.info("获取会话详情：{}",conversationId);
+    public Result getConversationDetail(@PathVariable Long conversationId) {
+        log.info("获取会话详情：{}", conversationId);
         return messageService.getConversationDetail(conversationId);
     }
 
     @GetMapping("/history")
-    public Result getHistory(MessageQueryDTO messageQueryDTO){
-        log.info("获取聊天记录：{}",messageQueryDTO);
+    public Result getHistory(MessageQueryDTO messageQueryDTO) {
+        log.info("获取聊天记录：{}", messageQueryDTO);
         return messageService.getHistory(messageQueryDTO);
     }
 
     @PostMapping("/read")
-    public Result read(@RequestBody MessageReadDTO messageReadDTO){
-        log.info("标记已读：{}",messageReadDTO);
+    public Result read(@RequestBody MessageReadDTO messageReadDTO) {
+        log.info("标记已读：{}", messageReadDTO);
         return messageService.read(messageReadDTO);
     }
 }

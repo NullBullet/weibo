@@ -10,9 +10,9 @@
     </select>
     <select id="getUsersInfoByUserIds" resultType="com.jun.vo.UserVO">
         select id,nickname,avatar from users where id in
-            <foreach collection="setIds" separator="," open="(" close=")" item="id">
-                #{id}
-            </foreach>
+        <foreach collection="setIds" separator="," open="(" close=")" item="id">
+            #{id}
+        </foreach>
     </select>
     <select id="getImageByIds" resultType="com.jun.entity.StatusImage">
         select *from status_images where status_id in

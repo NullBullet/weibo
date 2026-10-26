@@ -16,13 +16,13 @@ public class StatusesController {
     private StatusesService statusesService;
 
     @PostMapping
-    public Result statuses(@RequestBody StatusesImageDTO statusesImageDTO){
-        log.info("发布微博：{}",statusesImageDTO);
+    public Result statuses(@RequestBody StatusesImageDTO statusesImageDTO) {
+        log.info("发布微博：{}", statusesImageDTO);
         return statusesService.saveStatus(statusesImageDTO);
     }
 
     @DeleteMapping("/{id}")
-    public Result deleteStatus(@PathVariable Long id){
+    public Result deleteStatus(@PathVariable Long id) {
         log.info("删除微博：statusId={}", id);
         return statusesService.deleteStatus(id);
     }

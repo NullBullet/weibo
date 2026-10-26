@@ -1,15 +1,15 @@
 package com.jun.utils;
 
-import com.aliyun.oss.*;
-import com.aliyun.oss.common.auth.*;
-import com.aliyun.oss.common.comm.SignVersion;
+import com.aliyun.oss.ClientException;
+import com.aliyun.oss.OSS;
+import com.aliyun.oss.OSSClientBuilder;
+import com.aliyun.oss.OSSException;
 import com.aliyun.oss.model.PutObjectRequest;
 import com.aliyun.oss.model.PutObjectResult;
 import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;import lombok.extern.slf4j.Slf4j;
+import lombok.extern.slf4j.Slf4j;
 
-import java.io.FileInputStream;
 import java.io.InputStream;
 
 @Slf4j
@@ -22,7 +22,7 @@ public class OssUtil {
     private String accessKeySecret;
     private String bucketName;
 
-    public void delete(String objectName){
+    public void delete(String objectName) {
         OSS ossClient = new OSSClientBuilder().build(endpoint, accessKeyId, accessKeySecret);
 
         try {
@@ -47,7 +47,7 @@ public class OssUtil {
         }
     }
 
-    public String upload(InputStream inputStream,String objectName) throws Exception {
+    public String upload(InputStream inputStream, String objectName) throws Exception {
         /*// Endpoint以华东1（杭州）为例，其它Region请按实际情况填写。
         String endpoint = "https://oss-cn-hangzhou.aliyuncs.com";
         // 从环境变量中获取访问凭证。运行本代码示例之前，请确保已设置环境变量OSS_ACCESS_KEY_ID和OSS_ACCESS_KEY_SECRET。

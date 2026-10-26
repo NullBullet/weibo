@@ -4,41 +4,29 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
+import com.jun.context.BaseContext;
 import com.jun.dto.FollowQueryDTO;
 import com.jun.dto.ScrollDTO;
 import com.jun.dto.StatusPageQueryDTO;
 import com.jun.dto.UserProfileDTO;
 import com.jun.entity.StatusImage;
-import com.jun.entity.User;
 import com.jun.enumeration.TargetType;
 import com.jun.exception.UploadAvatarException;
+import com.jun.mapper.UsersMapper;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.result.ScrollResult;
-import com.jun.utils.FollowSetHelper;
-import com.jun.utils.LikeSetHelper;
-import com.jun.utils.OssUtil;
-import com.jun.utils.PostStatsHelper;
-import com.jun.utils.UserPostIdsHelper;
-import com.jun.utils.UserStatsHelper;
-import com.jun.vo.ExtensionVO;
-import com.jun.vo.FollowUserVO;
-import com.jun.vo.StatusVO;
-import com.jun.vo.UserCountVO;
-import com.jun.vo.UsersInfoVO;
-import com.jun.mapper.UsersMapper;
-import com.jun.service.UsersService;
 import com.jun.service.RewardService;
-import com.jun.context.BaseContext;
+import com.jun.service.UsersService;
+import com.jun.utils.*;
+import com.jun.vo.*;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
 import org.springframework.data.redis.connection.RedisStringCommands;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.types.Expiration;
-import org.springframework.data.redis.serializer.RedisSerializer;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -47,7 +35,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import static com.jun.constant.MessageConstant.*;
+import static com.jun.constant.MessageConstant.UPLOAD_IMAGE_ERROR;
 import static com.jun.constant.RedisConstants.*;
 
 @Slf4j
@@ -112,12 +100,12 @@ public class UsersServiceImpl implements UsersService {
     }
 
     @Override
-    public Result<String> updateProfile(UserProfileDTO userProfileDTO,MultipartFile avatarFile) {
+    public Result<String> updateProfile(UserProfileDTO userProfileDTO, MultipartFile avatarFile) {
         Long userId = BaseContext.getCurrentId();
         String fileUrl = null;
         if (avatarFile != null && !avatarFile.isEmpty()) {
 
-            if (userProfileDTO.getAvatar()!=null) {
+            if (userProfileDTO.getAvatar() != null) {
                 try {
                     String avatarPath = usersMapper.getAvatarByUserId(userId);
                     List<String> split = StrUtil.split(avatarPath, "/");
@@ -147,8 +135,8 @@ public class UsersServiceImpl implements UsersService {
             return Result.error("对象为空");
         }
         userProfileDTO.setAvatar(fileUrl);
-        int isSuccess = usersMapper.updateProfile(userProfileDTO,userId);
-        if (isSuccess <= 0){
+        int isSuccess = usersMapper.updateProfile(userProfileDTO, userId);
+        if (isSuccess <= 0) {
             return Result.error("更新个人信息失败！");
         }
         return Result.success(fileUrl);
@@ -495,10 +483,9 @@ public class UsersServiceImpl implements UsersService {
             List<StatusImage> image = groupByStatusId.get(statusVO.getId());
             statusVO.setImages(image);
 
-            if (userId ==null) {
+            if (userId == null) {
                 statusVO.setIsLiked(false);
-            }
-            else {
+            } else {
                 Boolean isLiked = redisTemplate.opsForSet().isMember(LIKE_POST_KEY + statusVO.getId(), userId.toString());
                 statusVO.setIsLiked(isLiked);
             }

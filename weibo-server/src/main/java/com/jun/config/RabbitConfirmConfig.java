@@ -16,12 +16,12 @@ public class RabbitConfirmConfig {
     @PostConstruct
     public void init() {
         rabbitTemplate.setConfirmCallback((correlationData, ack, cause) -> {
-                if (ack) {
-                    log.info("消息发送成功:{}", correlationData);
-                } else {
-                    log.error("消息发送失败:{}", cause);
+                    if (ack) {
+                        log.info("消息发送成功:{}", correlationData);
+                    } else {
+                        log.error("消息发送失败:{}", cause);
+                    }
                 }
-            }
         );
     }
 }

@@ -18,8 +18,8 @@ public class UploadController {
     private UploadService uploadService;
 
     @PostMapping("/image")
-    public Result<String> image(MultipartFile multipartFile){
-        log.info("上传微博图片：{}",multipartFile);
+    public Result<String> image(MultipartFile multipartFile) {
+        log.info("上传微博图片：{}", multipartFile);
         return uploadService.uploadStatusImage(multipartFile);
     }
 }

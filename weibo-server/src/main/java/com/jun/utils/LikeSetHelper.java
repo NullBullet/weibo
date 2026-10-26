@@ -10,12 +10,7 @@ import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -24,18 +19,20 @@ import java.util.concurrent.TimeUnit;
  * <p>
  * - TTL：重建与写入时 7 天，避免全站点赞集合永久占用内存；
  * - 写路径（点赞/取消）：add/remove 前条件重建，保证 SADD/SREM 返回值反映数据库真实
- *   状态——key 丢失时若直接 add 会把已点赞用户当作新赞，导致 likeCount 重复累加与
- *   MQ 重复落库；若直接 remove 会把已点赞的取消操作误判为幂等，DB 记录无法删除；
+ * 状态——key 丢失时若直接 add 会把已点赞用户当作新赞，导致 likeCount 重复累加与
+ * MQ 重复落库；若直接 remove 会把已点赞的取消操作误判为幂等，DB 记录无法删除；
  * - 读路径（isLiked 展示）：批量条件重建兜底，key 缺失时从数据库批量拉回，SADD 幂等
- *   无锁安全，与并发点赞最终一致；
+ * 无锁安全，与并发点赞最终一致；
  * - 空集合哨兵：零赞目标不落 SADD 成员，仅写哨兵成员 "0" 占位使 key 存在并带 TTL，
- *   避免零赞目标每次浏览都触发重建查库；userId 恒为正整数，哨兵不影响 isMember 判断。
+ * 避免零赞目标每次浏览都触发重建查库；userId 恒为正整数，哨兵不影响 isMember 判断。
  */
 @Slf4j
 @Component
 public class LikeSetHelper {
 
-    /** 空集合哨兵成员：userId 恒为正整数，"0" 不会与真实用户冲突 */
+    /**
+     * 空集合哨兵成员：userId 恒为正整数，"0" 不会与真实用户冲突
+     */
     private static final String EMPTY_SENTINEL = "0";
 
     @Resource

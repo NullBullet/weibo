@@ -39,7 +39,7 @@ public class LikeConsumer {
 
         String key = MQ_IDEMPOTENT_KEY + message.getMessageId();
         Boolean exists = redisTemplate.hasKey(key);
-        if(Boolean.TRUE.equals(exists)){
+        if (Boolean.TRUE.equals(exists)) {
             log.info("消息已处理，直接ACK:{}", message.getMessageId());
             channel.basicAck(deliveryTag, false);
             return;

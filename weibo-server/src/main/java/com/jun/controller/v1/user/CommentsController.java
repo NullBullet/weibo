@@ -17,21 +17,21 @@ public class CommentsController {
     private CommentsService commentsService;
 
     @GetMapping
-    public Result getComments(CommentsResultDTO commentsResultDTO){
-        log.info("获取评论：{}",commentsResultDTO);
+    public Result getComments(CommentsResultDTO commentsResultDTO) {
+        log.info("获取评论：{}", commentsResultDTO);
         return commentsService.getComments(commentsResultDTO);
     }
 
     @PostMapping
-    public Result postComments(@RequestBody PostCommentsDTO postCommentsDTO){
+    public Result postComments(@RequestBody PostCommentsDTO postCommentsDTO) {
         log.info("发评论");
         return commentsService.postComments(postCommentsDTO);
     }
 
     @GetMapping("/{commentId}/replies")
     public Result getReplies(@PathVariable Long commentId,
-                          @RequestParam(defaultValue = "1") Integer page,
-                          @RequestParam(defaultValue = "10") Integer pageSize){
+                             @RequestParam(defaultValue = "1") Integer page,
+                             @RequestParam(defaultValue = "10") Integer pageSize) {
         log.info("获取二级评论");
         RepliesCommentsResultDTO repliesCommentsResultDTO = RepliesCommentsResultDTO.builder()
                 .commentId(commentId)

@@ -21,12 +21,12 @@ import java.util.concurrent.TimeUnit;
  * 评论统计缓存（comment:stats:{commentId} Hash：replyCount、likeCount）的统一维护入口，
  * 模式与 PostStatsHelper 一致：
  * - 完整性校验：hash 必须同时含 replyCount 与 likeCount，残缺视为 miss 走重建修复，
- *   避免单字段 HINCRBY 在 key 丢失时创建残缺 hash，后续增量建立在错误基线上且无法自愈；
+ * 避免单字段 HINCRBY 在 key 丢失时创建残缺 hash，后续增量建立在错误基线上且无法自愈；
  * - 重建使用 SET NX PX 分布式锁 + 锁内 double-check，防止并发惊群重复重建；
- *   抢不到锁的请求短暂等待后降级读库并同样 putIfAbsent 写回（无锁安全）；
+ * 抢不到锁的请求短暂等待后降级读库并同样 putIfAbsent 写回（无锁安全）；
  * - 重建写回使用 putIfAbsent 逐字段补齐，不覆盖已有字段，避免丢失并发 HINCRBY 的增量；
  * - TTL：重建/回填时初始化，业务写入（点赞/回复）时续期，批量读命中时续期；
- *   数据库不维护实时基线之外的来源，likeCount 重建自 comments.likes_count（MQ 消费落库维护）。
+ * 数据库不维护实时基线之外的来源，likeCount 重建自 comments.likes_count（MQ 消费落库维护）。
  */
 @Slf4j
 @Component
@@ -37,11 +37,15 @@ public class CommentStatsHelper {
 
     private static final List<String> REQUIRED_FIELDS = List.of(FIELD_REPLY_COUNT, FIELD_LIKE_COUNT);
 
-    /** 等待他人重建的轮询参数：10 次 x 100ms，超时后降级直读数据库 */
+    /**
+     * 等待他人重建的轮询参数：10 次 x 100ms，超时后降级直读数据库
+     */
     private static final int WAIT_RETRY_TIMES = 10;
     private static final long WAIT_INTERVAL_MS = 100L;
 
-    /** 释放锁的 Lua 脚本：仅当锁 value 与自己写入的一致时才删除，防止误删他人的锁 */
+    /**
+     * 释放锁的 Lua 脚本：仅当锁 value 与自己写入的一致时才删除，防止误删他人的锁
+     */
     private static final RedisScript<Long> UNLOCK_SCRIPT = new DefaultRedisScript<>(
             "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
             Long.class);

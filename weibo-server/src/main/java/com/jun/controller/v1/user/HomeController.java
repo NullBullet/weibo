@@ -19,8 +19,8 @@ public class HomeController {
     private HomeService homeService;
 
     @GetMapping("/timeline")
-    public Result timeline(HomeQueryDTO homeQueryDTO){
-        log.info("获取首页微博列表：{}",homeQueryDTO);
+    public Result timeline(HomeQueryDTO homeQueryDTO) {
+        log.info("获取首页微博列表：{}", homeQueryDTO);
         TimelineType type = homeQueryDTO.getTimelineType();
         if (type == null) {
             type = TimelineType.LATEST;

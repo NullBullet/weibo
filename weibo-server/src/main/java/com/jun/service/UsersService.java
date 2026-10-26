@@ -1,4 +1,5 @@
 package com.jun.service;
+
 import com.jun.dto.FollowQueryDTO;
 import com.jun.dto.ScrollDTO;
 import com.jun.dto.StatusPageQueryDTO;
@@ -12,7 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 public interface UsersService {
     Result<UsersInfoVO> me();
 
-    Result<String> updateProfile(UserProfileDTO userProfileDTO,MultipartFile avatarFile);
+    Result<String> updateProfile(UserProfileDTO userProfileDTO, MultipartFile avatarFile);
 
     Result<UserProfileDTO> getProfile();
 
