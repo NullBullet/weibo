@@ -18,6 +18,7 @@ import com.jun.service.CommentsService;
 import com.jun.utils.HotScoreCalculator;
 import com.jun.utils.PostStatsHelper;
 import com.jun.utils.UserStatsHelper;
+import com.jun.utils.CommentStatsHelper;
 import com.jun.vo.CommentVO;
 import com.jun.vo.ReplyCountVO;
 import com.jun.vo.ToggleLikeVO;
@@ -60,6 +61,8 @@ public class CommentsServiceImpl implements CommentsService {
     private PostStatsHelper postStatsHelper;
     @Resource
     private UserStatsHelper userStatsHelper;
+    @Resource
+    private CommentStatsHelper commentStatsHelper;
 
     // ======================== 评论点赞 ========================
 
@@ -85,7 +88,8 @@ public class CommentsServiceImpl implements CommentsService {
         if (Boolean.TRUE.equals(toggleLikeDTO.getIsLiked())) {
             Long add = redisTemplate.opsForSet().add(likeKey, userId.toString());
             if (add == 1) {
-                Long likeCount = redisTemplate.opsForHash().increment(statsKey, "likeCount", 1);
+                // 防御 + 增量 + 续期：缓存缺失/残缺时先完整重建，避免 HINCRBY 建立在错误基线上
+                Long likeCount = commentStatsHelper.incrementLike(commentId, 1);
 
                 // MQ 异步入库：保存点赞记录 + 更新评论点赞数
                 CommentLikeMessage message = CommentLikeMessage.builder()
@@ -115,17 +119,19 @@ public class CommentsServiceImpl implements CommentsService {
                 return Result.success(vo);
             }
             if (add == 0) {
-                Object likeCount = redisTemplate.opsForHash().get(statsKey, "likeCount");
-                long count = likeCount == null ? 0 : Long.parseLong(likeCount.toString());
-                return Result.success(ToggleLikeVO.builder().likeCount(count).isLiked(true).build());
+                // 已点赞的幂等分支：miss 时从 DB 重建兜底，避免误报 0
+                Long count = commentStatsHelper.getLikeCount(commentId);
+                long likeCount = count == null ? 0 : count;
+                return Result.success(ToggleLikeVO.builder().likeCount(likeCount).isLiked(true).build());
             }
         } else {
             Long removed = redisTemplate.opsForSet().remove(likeKey, userId.toString());
             if (removed == 1) {
-                Long likeCount = redisTemplate.opsForHash().increment(statsKey, "likeCount", -1);
+                Long likeCount = commentStatsHelper.incrementLike(commentId, -1);
                 if (likeCount < 0) {
                     likeCount = 0L;
                     redisTemplate.opsForHash().put(statsKey, "likeCount", 0);
+                    commentStatsHelper.refreshTtl(commentId);
                 }
 
                 // MQ 异步入库：删除点赞记录 + 更新评论点赞数
@@ -156,9 +162,10 @@ public class CommentsServiceImpl implements CommentsService {
                 return Result.success(vo);
             }
             if (removed == 0) {
-                Object likeCount = redisTemplate.opsForHash().get(statsKey, "likeCount");
-                long count = likeCount == null ? 0 : Long.parseLong(likeCount.toString());
-                return Result.success(ToggleLikeVO.builder().likeCount(count).isLiked(false).build());
+                // 未点赞的幂等分支：miss 时从 DB 重建兜底，避免误报 0
+                Long count = commentStatsHelper.getLikeCount(commentId);
+                long likeCount = count == null ? 0 : count;
+                return Result.success(ToggleLikeVO.builder().likeCount(likeCount).isLiked(false).build());
             }
         }
         return Result.error("评论点赞/取消失败");
@@ -273,7 +280,8 @@ public class CommentsServiceImpl implements CommentsService {
         redisTemplate.opsForHash().increment(statsKey, "commentCount", 1);
 
         if (parentId != null) {
-            redisTemplate.opsForHash().increment(COMMENT_STATS_KEY + parentId, "replyCount", 1);
+            // 防御 + 增量 + 续期：缓存缺失/残缺时先完整重建，避免 HINCRBY 创建残缺 hash
+            commentStatsHelper.incrementReply(parentId, 1);
         }
 
         // 更新热度
@@ -659,28 +667,43 @@ public class CommentsServiceImpl implements CommentsService {
 
         Map<Long, Integer> result = new HashMap<>();
         List<Long> missIds = new ArrayList<>();
+        List<String> hitKeys = new ArrayList<>();
 
         for (int i = 0; i < commentIds.size(); i++) {
             Object val = vals.get(i);
             if (val != null) {
                 result.put(commentIds.get(i), Integer.parseInt(val.toString()));
+                hitKeys.add(keys.get(i));
             } else {
                 missIds.add(commentIds.get(i));
             }
         }
 
+        // 命中续期（pipeline 批量），活跃评论的统计缓存不过期
+        if (!hitKeys.isEmpty()) {
+            redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+                for (String key : hitKeys) {
+                    connection.keyCommands().expire(key.getBytes(), COMMENT_STATS_TTL);
+                }
+                return null;
+            });
+        }
+
         if (!missIds.isEmpty()) {
-            var dbCounts = commentsMapper.countRepliesByCommentIds(missIds);
-            for (var rc : dbCounts) {
-                result.put(rc.getCommentId(), rc.getCount());
-                redisTemplate.opsForHash().put(COMMENT_STATS_KEY + rc.getCommentId(), "replyCount", rc.getCount());
+            // miss 兜底：一次查出回复数 + 点赞数，完整回填两字段（putIfAbsent 防覆盖并发增量）
+            var dbStats = commentsMapper.getCommentStatsByIds(missIds);
+            for (var vo : dbStats) {
+                result.put(vo.getCommentId(), vo.getCount() == null ? 0 : vo.getCount());
+                commentStatsHelper.fillStats(vo.getCommentId(), vo.getCount(), vo.getLikesCount());
             }
+            // DB 也不存在（评论已删除）的 missId：回填零值，保持原有兜底行为
             for (Long missId : missIds) {
                 if (!result.containsKey(missId)) {
                     result.put(missId, 0);
-                    redisTemplate.opsForHash().put(COMMENT_STATS_KEY + missId, "replyCount", 0);
+                    commentStatsHelper.fillStats(missId, 0, 0);
                 }
             }
+            log.info("批量回填评论统计缓存: count={}", missIds.size());
         }
 
         return result;
@@ -691,13 +714,56 @@ public class CommentsServiceImpl implements CommentsService {
     private Map<Long, Integer> batchGetCommentLikeCounts(List<Long> commentIds) {
         if (commentIds.isEmpty()) return Collections.emptyMap();
 
+        List<String> keys = commentIds.stream()
+                .map(id -> COMMENT_STATS_KEY + id)
+                .toList();
+        List<Object> vals = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+            for (String key : keys) {
+                connection.hashCommands().hGet(key.getBytes(), "likeCount".getBytes());
+            }
+            return null;
+        });
+
         Map<Long, Integer> result = new HashMap<>();
-        for (Long id : commentIds) {
-            Object val = redisTemplate.opsForHash().get(COMMENT_STATS_KEY + id, "likeCount");
+        List<Long> missIds = new ArrayList<>();
+        List<String> hitKeys = new ArrayList<>();
+
+        for (int i = 0; i < commentIds.size(); i++) {
+            Object val = vals.get(i);
             if (val != null) {
-                result.put(id, Integer.parseInt(val.toString()));
+                result.put(commentIds.get(i), Integer.parseInt(val.toString()));
+                hitKeys.add(keys.get(i));
+            } else {
+                missIds.add(commentIds.get(i));
             }
         }
+
+        // 命中续期（pipeline 批量），活跃评论的统计缓存不过期
+        if (!hitKeys.isEmpty()) {
+            redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+                for (String key : hitKeys) {
+                    connection.keyCommands().expire(key.getBytes(), COMMENT_STATS_TTL);
+                }
+                return null;
+            });
+        }
+
+        // miss 兜底：原来直接不回填（前端显示旧值），改为查 DB 并完整回填两字段
+        if (!missIds.isEmpty()) {
+            var dbStats = commentsMapper.getCommentStatsByIds(missIds);
+            for (var vo : dbStats) {
+                result.put(vo.getCommentId(), vo.getLikesCount() == null ? 0 : vo.getLikesCount());
+                commentStatsHelper.fillStats(vo.getCommentId(), vo.getCount(), vo.getLikesCount());
+            }
+            for (Long missId : missIds) {
+                if (!result.containsKey(missId)) {
+                    result.put(missId, 0);
+                    commentStatsHelper.fillStats(missId, 0, 0);
+                }
+            }
+            log.info("批量回填评论点赞数缓存: count={}", missIds.size());
+        }
+
         return result;
     }
 
@@ -723,9 +789,10 @@ public class CommentsServiceImpl implements CommentsService {
     }
 
     private Long getReplyTotal(Long commentId) {
-        Object obj = redisTemplate.opsForHash().get(COMMENT_STATS_KEY + commentId, "replyCount");
-        if (obj != null) {
-            return Long.parseLong(obj.toString());
+        // miss 时完整重建（含 likeCount），重建失败再直查 DB 兜底
+        Long count = commentStatsHelper.getReplyCount(commentId);
+        if (count != null) {
+            return count;
         }
         return commentsMapper.countRepliesByCommentId(commentId);
     }

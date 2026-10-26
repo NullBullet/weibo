@@ -28,11 +28,11 @@ public interface CommentsMapper {
                                         @Param("offset") int offset,
                                         @Param("limit") int limit);
 
-    List<ReplyCountVO> countRepliesByCommentIds(@Param("commentIds") List<Long> commentIds);
-
     Long countTotalByStatusId(@Param("statusId") Long statusId);
 
     Long countRepliesByCommentId(@Param("commentId") Long commentId);
+
+    List<ReplyCountVO> getCommentStatsByIds(@Param("commentIds") List<Long> commentIds);
 
     List<UserVO> getUsersInfoByUserIds(@Param("userIds") List<Long> userIds);
 

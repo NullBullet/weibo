@@ -52,8 +52,14 @@ public class RedisConstants {
     public static final String POST_COMMENT_LIST_KEY = "post:comment:list:";
     //二级回复列表    comment:reply:list:{commentId}:{page}:{pageSize}
     public static final String COMMENT_REPLY_LIST_KEY = "comment:reply:list:";
-    //评论统计    comment:stats:{commentId} -> replyCount, likeCount...
+    //评论统计    comment:stats:{commentId} -> replyCount, likeCount
     public static final String COMMENT_STATS_KEY = "comment:stats:";
+    //评论统计缓存 TTL：7 天（秒），重建/回填时设置，业务写入时续期
+    public static final Long COMMENT_STATS_TTL = 7 * 24 * 60 * 60L;
+    //评论统计重建分布式锁  comment:stats:lock:{commentId}
+    public static final String COMMENT_STATS_LOCK_KEY = "comment:stats:lock:";
+    //重建锁过期时间（秒），防止持锁端宕机导致死锁
+    public static final long COMMENT_STATS_LOCK_TTL_SECONDS = 30L;
     //评论被谁点赞
     public static final String LIKE_COMMENT_KEY = "like:comment:";
     //用户信息缓存    user:profile:{userId}

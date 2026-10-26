@@ -42,17 +42,6 @@
         limit #{offset}, #{limit}
     </select>
 
-    <select id="countRepliesByCommentIds" resultType="com.jun.vo.ReplyCountVO">
-        select parent_id as commentId, count(*) as count
-        from comments
-        where parent_id in
-        <foreach collection="commentIds" item="id" open="(" close=")" separator=",">
-            #{id}
-        </foreach>
-        and is_deleted = 0
-        group by parent_id
-    </select>
-
     <select id="countTotalByStatusId" resultType="java.lang.Long">
         select count(*) from comments
         where status_id = #{statusId} and is_deleted = 0
@@ -61,6 +50,21 @@
     <select id="countRepliesByCommentId" resultType="java.lang.Long">
         select count(*) from comments
         where parent_id = #{commentId} and is_deleted = 0
+    </select>
+
+    <!-- 批量查询评论统计（回复数 + 点赞数），供统计缓存重建/兜底使用 -->
+    <select id="getCommentStatsByIds" resultType="com.jun.vo.ReplyCountVO">
+        select c.id as commentId,
+               c.likes_count as likesCount,
+               count(r.id) as count
+        from comments c
+        left join comments r on r.parent_id = c.id and r.is_deleted = 0
+        where c.id in
+        <foreach collection="commentIds" item="id" open="(" close=")" separator=",">
+            #{id}
+        </foreach>
+        and c.is_deleted = 0
+        group by c.id, c.likes_count
     </select>
 
     <select id="getUsersInfoByUserIds" resultType="com.jun.vo.UserVO">

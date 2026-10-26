@@ -520,6 +520,7 @@ public class UsersServiceImpl implements UsersService {
 
         // 重建后设置 TTL，防止过期键被重建后永久存活
         userPostIdsHelper.refreshTtl(zsetKey);
+        log.info("部分重建用户微博时间线缓存: userId={}, count={}", userId, record.size());
 
         // 再填充转发原微博（仅用于本次响应，不写缓存）
         fillOriginalStatus(record);
