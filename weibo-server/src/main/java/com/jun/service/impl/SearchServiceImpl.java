@@ -15,6 +15,7 @@ import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.service.SearchService;
 import com.jun.service.RewardService;
+import com.jun.utils.FollowSetHelper;
 import com.jun.utils.HotScoreCalculator;
 import com.jun.utils.LikeSetHelper;
 import com.jun.utils.PostStatsHelper;
@@ -49,6 +50,8 @@ public class SearchServiceImpl implements SearchService {
     private PostStatsHelper postStatsHelper;
     @Resource
     private LikeSetHelper likeSetHelper;
+    @Resource
+    private FollowSetHelper followSetHelper;
 
     @Override
     public Result comprehensionResults(SearchResultDTO searchResultDTO) {
@@ -517,6 +520,8 @@ public class SearchServiceImpl implements SearchService {
 
         Long currentUserId = BaseContext.getCurrentId();
 
+        // 读路径兜底：关注集合过期后从 DB 重建，避免 isFollowed 全为 false
+        followSetHelper.ensureFollowing(currentUserId);
         Set<Object> myFollowings = redisTemplate.opsForSet().members(FOLLOW_FOLLOWING_KEY + currentUserId);
         Set<Long> myFollowingsIds = myFollowings.stream()
                 .map(id -> Long.valueOf(id.toString()))

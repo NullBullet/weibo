@@ -5,6 +5,8 @@ public class RedisConstants {
     public static final String FOLLOW_FOLLOWING_KEY = "follow:following:";
     //被关注
     public static final String FOLLOW_FANS_KEY = "follow:fans:";
+    //关注/粉丝集合缓存 TTL：7 天（秒），重建/写入时设置与续期，读路径 miss 时从 user_following/user_follower 表重建
+    public static final Long FOLLOW_SET_TTL = 7 * 24 * 60 * 60L;
     //用户统计    user:stats:{userId} -> followingCount, followersCount, likesCount
     public static final String USER_STATS_KEY = "user:stats:";
     //用户统计缓存 TTL：7 天（秒），初始化写入，业务访问时刷新

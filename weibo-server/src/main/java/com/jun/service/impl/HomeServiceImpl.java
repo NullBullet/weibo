@@ -11,6 +11,7 @@ import com.jun.result.Result;
 import com.jun.result.ScrollResult;
 import com.jun.service.HomeService;
 import com.jun.service.RewardService;
+import com.jun.utils.FollowSetHelper;
 import com.jun.utils.LikeSetHelper;
 import com.jun.utils.PostStatsHelper;
 import com.jun.vo.ExtensionVO;
@@ -48,6 +49,8 @@ public class HomeServiceImpl implements HomeService {
     private PostStatsHelper postStatsHelper;
     @Resource
     private LikeSetHelper likeSetHelper;
+    @Resource
+    private FollowSetHelper followSetHelper;
 
     @Override
     public Result getLatestPosts(HomeQueryDTO homeQueryDTO) {
@@ -303,7 +306,8 @@ public class HomeServiceImpl implements HomeService {
             });
         }
 
-        // 6. 关注列表
+        // 6. 关注列表（读路径兜底：集合过期后从 DB 重建，避免 isFollowed 全为 false）
+        followSetHelper.ensureFollowing(userId);
         Set<Object> myFollowings = redisTemplate.opsForSet().members(FOLLOW_FOLLOWING_KEY + userId);
         Set<Long> myFollowingsIds = myFollowings != null
                 ? myFollowings.stream().map(id -> Long.valueOf(id.toString())).collect(Collectors.toSet())

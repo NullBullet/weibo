@@ -15,6 +15,7 @@ import com.jun.exception.UploadAvatarException;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.result.ScrollResult;
+import com.jun.utils.FollowSetHelper;
 import com.jun.utils.LikeSetHelper;
 import com.jun.utils.OssUtil;
 import com.jun.utils.PostStatsHelper;
@@ -69,6 +70,8 @@ public class UsersServiceImpl implements UsersService {
     private UserPostIdsHelper userPostIdsHelper;
     @Resource
     private LikeSetHelper likeSetHelper;
+    @Resource
+    private FollowSetHelper followSetHelper;
 
     @Override
     public Result<UsersInfoVO> me() {
@@ -577,8 +580,9 @@ public class UsersServiceImpl implements UsersService {
                 UsersInfoVO cached = JSONUtil.toBean(cacheJson.toString(), UsersInfoVO.class);
                 fillUserStats(cached, userId);
 
-                // 是否关注
+                // 是否关注（读路径兜底：集合过期后从 DB 重建）
                 if (currentUserId != null && !currentUserId.equals(userId)) {
+                    followSetHelper.ensureFollowing(currentUserId);
                     cached.setIsFollowing(
                             redisTemplate.opsForSet().isMember(FOLLOW_FOLLOWING_KEY + currentUserId, userId.toString()));
                 }
@@ -607,8 +611,9 @@ public class UsersServiceImpl implements UsersService {
         //4. 从 Redis 实时获取 stats
         fillUserStats(usersInfoVO, userId);
 
-        //5. 是否关注
+        //5. 是否关注（读路径兜底：集合过期后从 DB 重建）
         if (currentUserId != null && !currentUserId.equals(userId)) {
+            followSetHelper.ensureFollowing(currentUserId);
             usersInfoVO.setIsFollowing(
                     redisTemplate.opsForSet().isMember(FOLLOW_FOLLOWING_KEY + currentUserId, userId.toString()));
         }
@@ -933,6 +938,8 @@ public class UsersServiceImpl implements UsersService {
     }
 
     private Set<Long> getFollowingIdSet(Long userId) {
+        // 读路径兜底：关注集合过期后从 DB 重建，避免粉丝列表的 isFollowed 全为 false
+        followSetHelper.ensureFollowing(userId);
         Set<Object> raw = redisTemplate.opsForSet().members(FOLLOW_FOLLOWING_KEY + userId);
         if (raw == null) return Collections.emptySet();
         return raw.stream().map(o -> Long.valueOf(o.toString())).collect(Collectors.toSet());

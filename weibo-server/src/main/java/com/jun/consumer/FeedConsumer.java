@@ -2,6 +2,7 @@ package com.jun.consumer;
 
 import com.jun.config.RabbitMQConfig;
 import com.jun.mq.message.FeedMessage;
+import com.jun.utils.FollowSetHelper;
 import com.rabbitmq.client.Channel;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +29,8 @@ public class FeedConsumer {
     private RabbitTemplate rabbitTemplate;
     @Resource
     private RedisTemplate redisTemplate;
+    @Resource
+    private FollowSetHelper followSetHelper;
 
     @RabbitListener(
             queues = RabbitMQConfig.FEED_QUEUE,
@@ -46,13 +49,21 @@ public class FeedConsumer {
         }
 
         try {
-            // 1. 获取发帖人的粉丝列表
+            // 1. 防御：粉丝集合缓存缺失时从 user_follower 重建——
+            // 否则 fans 为空，本次仍会被 ACK 并打幂等标记，粉丝静默漏推且无补偿机会
+            followSetHelper.ensureFans(message.getUserId());
+
+            // 2. 获取发帖人的粉丝列表
             String fansKey = FOLLOW_FANS_KEY + message.getUserId();
             Set<String> fans = redisTemplate.opsForSet().members(fansKey);
 
             if (fans != null && !fans.isEmpty()) {
-                // 2. 推送到每个粉丝的收件箱 + 裁剪到最近 200 条
+                // 3. 推送到每个粉丝的收件箱 + 裁剪到最近 200 条
                 for (String fanId : fans) {
+                    // 跳过空集合哨兵，避免给不存在的 userId=0 写收件箱
+                    if (FollowSetHelper.EMPTY_SENTINEL.equals(fanId)) {
+                        continue;
+                    }
                     String feedKey = FEED_USER_KEY + fanId;
                     redisTemplate.opsForZSet().add(
                             feedKey,

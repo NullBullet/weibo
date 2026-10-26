@@ -13,6 +13,7 @@ import com.jun.vo.HotTopicVO;
 import com.jun.vo.StatusVO;
 import com.jun.mapper.HotMapper;
 import com.jun.service.HotService;
+import com.jun.utils.FollowSetHelper;
 import com.jun.utils.LikeSetHelper;
 import com.jun.utils.PostStatsHelper;
 import com.jun.vo.UserVO;
@@ -42,6 +43,8 @@ public class HotServiceImpl implements HotService {
     private PostStatsHelper postStatsHelper;
     @Resource
     private LikeSetHelper likeSetHelper;
+    @Resource
+    private FollowSetHelper followSetHelper;
 
     @Override
     public Result<List<HotTopicVO>> topics(Integer size) {
@@ -209,7 +212,8 @@ public class HotServiceImpl implements HotService {
             });
         }
 
-        //9. 获取关注列表
+        //9. 获取关注列表（读路径兜底：集合过期后从 DB 重建，避免 isFollowed 全为 false）
+        followSetHelper.ensureFollowing(currentUserId);
         Set<Object> myFollowings = redisTemplate.opsForSet().members(FOLLOW_FOLLOWING_KEY + currentUserId);
         Set<Long> myFollowingsIds = myFollowings.stream()
                 .map(id -> Long.valueOf(id.toString()))
