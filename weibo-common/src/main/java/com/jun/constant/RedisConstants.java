@@ -50,10 +50,14 @@ public class RedisConstants {
     public static final String SEARCH_IDS_COMPREHENSIVE_KEY = "search:ids:comprehensive:";
     public static final Long SEARCH_RESULT_TTL = 1800L;
 
+    //评论列表缓存
     //一级评论列表    post:comment:list:{postId}:{page}:{pageSize}
     public static final String POST_COMMENT_LIST_KEY = "post:comment:list:";
     //二级回复列表    comment:reply:list:{commentId}:{page}:{pageSize}
     public static final String COMMENT_REPLY_LIST_KEY = "comment:reply:list:";
+    //分页缓存常见页兜底 key 后缀
+    //":pages" 索引缺失/被淘汰时用于删除默认分页缓存，格式为 :{page}:{pageSize}
+    public static final String[] COMMON_PAGE_KEY_SUFFIXES = {":1:3", ":1:5", ":1:10", ":1:20"};
     //评论统计    comment:stats:{commentId} -> replyCount, likeCount
     public static final String COMMENT_STATS_KEY = "comment:stats:";
     //评论统计缓存 TTL：7 天（秒），重建/回填时设置，业务写入时续期

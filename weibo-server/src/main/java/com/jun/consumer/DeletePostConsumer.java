@@ -87,10 +87,7 @@ public class DeletePostConsumer {
                         }
                     }
                     redisTemplate.delete(replyPagesKey);
-                    redisTemplate.delete(COMMENT_REPLY_LIST_KEY + cid + ":1:3");
-                    redisTemplate.delete(COMMENT_REPLY_LIST_KEY + cid + ":1:5");
-                    redisTemplate.delete(COMMENT_REPLY_LIST_KEY + cid + ":1:10");
-                    redisTemplate.delete(COMMENT_REPLY_LIST_KEY + cid + ":1:20");
+                    deleteCommonPageKeys(COMMENT_REPLY_LIST_KEY + cid);
                 }
             }
 
@@ -103,10 +100,7 @@ public class DeletePostConsumer {
                 }
             }
             redisTemplate.delete(commentPagesKey);
-            redisTemplate.delete(POST_COMMENT_LIST_KEY + statusId + ":1:3");
-            redisTemplate.delete(POST_COMMENT_LIST_KEY + statusId + ":1:5");
-            redisTemplate.delete(POST_COMMENT_LIST_KEY + statusId + ":1:10");
-            redisTemplate.delete(POST_COMMENT_LIST_KEY + statusId + ":1:20");
+            deleteCommonPageKeys(POST_COMMENT_LIST_KEY + statusId);
 
             // ==================== DB 软删除 ====================
 
@@ -144,6 +138,15 @@ public class DeletePostConsumer {
             }
 
             channel.basicAck(deliveryTag, false);
+        }
+    }
+
+    /**
+     * 兜底删除默认分页缓存：":pages" 索引缺失/被淘汰时使用
+     */
+    private void deleteCommonPageKeys(String keyPrefix) {
+        for (String suffix : COMMON_PAGE_KEY_SUFFIXES) {
+            redisTemplate.delete(keyPrefix + suffix);
         }
     }
 }

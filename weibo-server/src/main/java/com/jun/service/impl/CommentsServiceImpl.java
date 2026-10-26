@@ -897,19 +897,19 @@ public class CommentsServiceImpl implements CommentsService {
         String pagesKey = POST_COMMENT_LIST_KEY + statusId + ":pages";
         deleteAllCachedPages(pagesKey, POST_COMMENT_LIST_KEY + statusId);
         // 兜底：删除常见的首页 key（空值缓存和默认分页）
-        redisTemplate.delete(POST_COMMENT_LIST_KEY + statusId + ":1:3");
-        redisTemplate.delete(POST_COMMENT_LIST_KEY + statusId + ":1:5");
-        redisTemplate.delete(POST_COMMENT_LIST_KEY + statusId + ":1:10");
-        redisTemplate.delete(POST_COMMENT_LIST_KEY + statusId + ":1:20");
+        deleteCommonPageKeys(POST_COMMENT_LIST_KEY + statusId);
     }
 
     private void deleteReplyListCache(Long commentId) {
         String pagesKey = COMMENT_REPLY_LIST_KEY + commentId + ":pages";
         deleteAllCachedPages(pagesKey, COMMENT_REPLY_LIST_KEY + commentId);
-        redisTemplate.delete(COMMENT_REPLY_LIST_KEY + commentId + ":1:3");
-        redisTemplate.delete(COMMENT_REPLY_LIST_KEY + commentId + ":1:5");
-        redisTemplate.delete(COMMENT_REPLY_LIST_KEY + commentId + ":1:10");
-        redisTemplate.delete(COMMENT_REPLY_LIST_KEY + commentId + ":1:20");
+        deleteCommonPageKeys(COMMENT_REPLY_LIST_KEY + commentId);
+    }
+
+    private void deleteCommonPageKeys(String keyPrefix) {
+        for (String suffix : COMMON_PAGE_KEY_SUFFIXES) {
+            redisTemplate.delete(keyPrefix + suffix);
+        }
     }
 
     private void deleteAllCachedPages(String pagesKey, String keyPrefix) {
