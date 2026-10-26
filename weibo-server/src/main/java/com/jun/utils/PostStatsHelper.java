@@ -247,6 +247,7 @@ public class PostStatsHelper {
             return null;
         }
         fillMissingFields(POST_STATS_KEY + id, rebuild);
+        log.info("降级重建帖子统计缓存（等待持锁方超时）: postId={}", id);
         return new HashMap<>(rebuild);
     }
 
