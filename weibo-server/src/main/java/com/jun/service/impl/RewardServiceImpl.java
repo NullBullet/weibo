@@ -10,6 +10,7 @@ import com.jun.mq.message.RewardJoinMessage;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.service.RewardService;
+import com.jun.utils.FollowSetHelper;
 import com.jun.vo.*;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
@@ -27,6 +28,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
+import static com.jun.constant.RedisConstants.FOLLOW_FOLLOWING_KEY;
 import static com.jun.constant.RedisConstants.REWARD_ACTIVITY_INFO_KEY;
 import static com.jun.constant.RedisConstants.REWARD_ACTIVITY_STATUS_KEY;
 
@@ -55,6 +57,8 @@ public class RewardServiceImpl implements RewardService {
     private RedisTemplate redisTemplate;
     @Resource
     private RabbitTemplate rabbitTemplate;
+    @Resource
+    private FollowSetHelper followSetHelper;
 
     private DefaultRedisScript<Long> rewardJoinScript;
 
@@ -338,10 +342,13 @@ public class RewardServiceImpl implements RewardService {
             return;
         }
 
-        // 3. 检查粉丝限制
+        // 3. 检查粉丝限制：fanOnly 表示「仅创建者的粉丝可参与」，即参与者是否已关注创建者
         if (Boolean.TRUE.equals(fanOnly)) {
-            String followingKey = "follow:following:" + creatorId;
-            Boolean isFan = redisTemplate.opsForSet().isMember(followingKey, userId.toString());
+            // 防御：参与者的关注集合缓存缺失时先从 DB 重建，
+            // 否则 isMember 恒为 false，已关注创建者的用户会被误拒
+            followSetHelper.ensureFollowing(userId);
+            String followingKey = FOLLOW_FOLLOWING_KEY + userId;
+            Boolean isFan = redisTemplate.opsForSet().isMember(followingKey, creatorId.toString());
             if (!Boolean.TRUE.equals(isFan)) {
                 log.warn("非粉丝参与被拒绝: activityId={}, userId={}", activityId, userId);
                 return;
