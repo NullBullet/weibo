@@ -14,7 +14,6 @@ public class NotificationsController {
     @Resource
     private NotificationsService notificationsService;
 
-    //todo:Redis缓存未读数、Redis缓存最近点赞用户
     @GetMapping("/likes")
     public Result like() {
         log.info("获取当前用户的获取当前用户收到的点赞聚合通知列表");

@@ -4,7 +4,6 @@ import com.github.pagehelper.Page;
 import com.jun.dto.SearchResultDTO;
 import com.jun.dto.SearchUsersDTO;
 import com.jun.entity.StatusImage;
-import com.jun.vo.HotStatusVO;
 import com.jun.vo.SearchStatusVO;
 import com.jun.vo.SearchUserVO;
 import com.jun.vo.UserVO;
@@ -15,8 +14,6 @@ import java.util.List;
 
 @Mapper
 public interface SearchMapper {
-    Page<HotStatusVO> getResults(SearchResultDTO searchResultDTO);
-
     List<UserVO> getUsersInfoByUserIds(List<Long> setIds);
 
     List<StatusImage> getImageByIds(List<Long> statusIds);

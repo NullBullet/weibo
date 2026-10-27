@@ -37,7 +37,6 @@ public class HotController {
         return hotService.topics(size);
     }
 
-    //todo 该接口需要使用游标滚动分页，对七天内的帖子筛选后（粉丝量/点赞数）,未做redis缓存
     // 计算热度分(互动总分 = 点赞数 + 评论数*3 + 转发数*5)
     // log_10(互动总分+1)/(小时数+2)^1.8
     @GetMapping("/posts")
