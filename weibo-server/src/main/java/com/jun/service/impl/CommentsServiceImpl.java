@@ -30,6 +30,8 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.types.Expiration;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -303,43 +305,23 @@ public class CommentsServiceImpl implements CommentsService {
                 .content(content)
                 .createdAt(LocalDateTime.now()).build();
 
+        // 父评论回复数基线必须在插入回复之前建立：
+        // 若在插入后重建，DB 查询会把本条未提交回复算进基线，提交后再 +1 会重复计数
+        if (parentId != null) {
+            commentStatsHelper.ensureStats(parentId);
+        }
+
         // DB：同步插入评论，获取自增 ID（后续 MQ 通知需要 commentId）
         commentsMapper.saveComment(comment);
 
-        // Redis 操作同步执行（防御：缓存缺失时先重建，避免 HINCRBY 创建残缺 hash）
-        postStatsHelper.ensureStats(statusId);
-        String statsKey = POST_STATS_KEY + statusId;
-        redisTemplate.opsForHash().increment(statsKey, "commentCount", 1);
-
-        if (parentId != null) {
-            // 防御 + 增量 + 续期：缓存缺失/残缺时先完整重建，避免 HINCRBY 创建残缺 hash
-            commentStatsHelper.incrementReply(parentId, 1);
-        }
-
-        // 更新热度
-        Map<Object, Object> stats = redisTemplate.opsForHash().entries(statsKey);
-        if (stats != null && !stats.isEmpty()) {
-            long likeCount = parseStat(stats, "likeCount");
-            long commentCount = parseStat(stats, "commentCount");
-            long forwardCount = parseStat(stats, "forwardCount");
-            long viewCount = parseStat(stats, "viewCount");
-            long createTime = parseStat(stats, "createTime");
-            if (createTime == 0) {
-                createTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
-            }
-
-            double score = HotScoreCalculator.calculate(viewCount, likeCount, commentCount, forwardCount, createTime);
-            redisTemplate.opsForZSet().add(HOT_POST_ZSET_KEY, statusId.toString(), score);
-            redisTemplate.opsForSet().add(HOT_POST_CANDIDATE_KEY, statusId.toString());
-        }
-
-        // 删除缓存
+        // 缓存失效放在提交前：回滚只会导致缓存 miss，读路径可按 DB 重建；
+        // 若放到提交后，会出现提交后仍读到旧列表的窗口
         deleteCommentListCache(statusId);
         if (parentId != null) {
             deleteReplyListCache(parentId);
         }
 
-        // MQ 异步入库
+        // MQ 消息提前构建，实际发送延迟到事务提交后
         CommentMessage message = CommentMessage.builder()
                 .messageId(UUID.randomUUID().toString())
                 .userId(userId)
@@ -353,15 +335,71 @@ public class CommentsServiceImpl implements CommentsService {
 
         CorrelationData correlationData = new CorrelationData(message.getMessageId());
 
-        rabbitTemplate.convertAndSend(
-                RabbitMQConfig.WEIBO_TOPIC_EXCHANGE,
-                COMMENT_CREATE,
-                message,
-                correlationData
-        );
+        // 事务提交后统一维护 Redis 并发送 MQ：
+        // 1. 回滚时不会留下评论数/回复数/热榜漂移；
+        // 2. 先写 Redis 再发 MQ，避免 Consumer 在 Redis 增量前更新 DB comments_count
+        runAfterCommit(() -> {
+            String statsKey = POST_STATS_KEY + statusId;
+            try {
+                postStatsHelper.ensureStats(statusId);
+                redisTemplate.opsForHash().increment(statsKey, "commentCount", 1);
+
+                Map<Object, Object> stats = redisTemplate.opsForHash().entries(statsKey);
+                if (stats != null && !stats.isEmpty()) {
+                    long likeCount = parseStat(stats, "likeCount");
+                    long commentCount = parseStat(stats, "commentCount");
+                    long forwardCount = parseStat(stats, "forwardCount");
+                    long viewCount = parseStat(stats, "viewCount");
+                    long createTime = parseStat(stats, "createTime");
+                    if (createTime == 0) {
+                        createTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
+                    }
+
+                    double score = HotScoreCalculator.calculate(viewCount, likeCount, commentCount, forwardCount, createTime);
+                    redisTemplate.opsForZSet().add(HOT_POST_ZSET_KEY, statusId.toString(), score);
+                    redisTemplate.opsForSet().add(HOT_POST_CANDIDATE_KEY, statusId.toString());
+                }
+            } catch (Exception e) {
+                log.error("评论提交后维护帖子统计/热榜失败: statusId={}, commentId={}",
+                        statusId, comment.getId(), e);
+            }
+
+            if (parentId != null) {
+                commentStatsHelper.incrementReplyAfterCommit(parentId, 1);
+            }
+
+            try {
+                rabbitTemplate.convertAndSend(
+                        RabbitMQConfig.WEIBO_TOPIC_EXCHANGE,
+                        COMMENT_CREATE,
+                        message,
+                        correlationData
+                );
+            } catch (Exception e) {
+                log.error("评论消息发送失败: statusId={}, commentId={}, messageId={}",
+                        statusId, comment.getId(), message.getMessageId(), e);
+            }
+        });
 
         CommentVO vo = buildCommentVO(comment, userId);
         return Result.success(vo);
+    }
+
+    /**
+     * 数据库事务提交后执行 Redis 维护和 MQ 发送。若当前没有事务同步（例如非代理调用），
+     * 则直接执行，保持降级行为。
+     */
+    private void runAfterCommit(Runnable action) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            action.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                action.run();
+            }
+        });
     }
 
     @Override

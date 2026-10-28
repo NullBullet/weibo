@@ -96,6 +96,28 @@ public class CommentStatsHelper {
     }
 
     /**
+     * 提交后回复数增量：缓存完整时执行 HINCRBY；
+     * 缓存缺失/残缺时从 DB 重建（DB 已包含本次提交的回复），不再重复应用 delta。
+     */
+    public void incrementReplyAfterCommit(Long commentId, long delta) {
+        if (commentId == null) {
+            return;
+        }
+        try {
+            String statsKey = RedisConstants.COMMENT_STATS_KEY + commentId;
+            Map<Object, Object> entries = redisTemplate.opsForHash().entries(statsKey);
+            if (!isCompleteStats(entries)) {
+                rebuild(commentId);
+                return;
+            }
+            redisTemplate.opsForHash().increment(statsKey, FIELD_REPLY_COUNT, delta);
+            redisTemplate.expire(statsKey, RedisConstants.COMMENT_STATS_TTL, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.warn("提交后更新评论回复数失败: commentId={}", commentId, e);
+        }
+    }
+
+    /**
      * 点赞数 +1/-1（先 ensure 防残缺 hash，再增量并续期），返回增量后的值
      */
     public Long incrementLike(Long commentId, long delta) {
