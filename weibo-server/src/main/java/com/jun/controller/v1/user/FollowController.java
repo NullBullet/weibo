@@ -22,14 +22,12 @@ public class FollowController {
         return followService.check(userId);
     }
 
-    //todo 未保证原子性
     @PostMapping("/follow")
     public Result follow(@RequestBody FollowRequestDTO followRequestDTO) {
         log.info("关注：{}", followRequestDTO);
         return followService.follow(BaseContext.getCurrentId(), followRequestDTO.getUserId());
     }
 
-    //todo 未保证原子性
     @PostMapping("/unfollow")
     public Result unfollow(@RequestBody FollowRequestDTO followRequestDTO) {
         log.info("取关：{}", followRequestDTO);

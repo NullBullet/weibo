@@ -7,6 +7,10 @@ public class RedisConstants {
     public static final String FOLLOW_FANS_KEY = "follow:fans:";
     //关注/粉丝集合缓存 TTL：7 天（秒），重建/写入时设置与续期，读路径 miss 时从 user_following/user_follower 表重建
     public static final Long FOLLOW_SET_TTL = 7 * 24 * 60 * 60L;
+    //关注/粉丝集合重建分布式锁  follow:set:lock:{following|fans}:{userId}
+    public static final String FOLLOW_SET_LOCK_KEY = "follow:set:lock:";
+    //重建锁过期时间（秒），防止持锁端宕机导致死锁
+    public static final long FOLLOW_SET_LOCK_TTL_SECONDS = 30L;
     //用户统计    user:stats:{userId} -> followingCount, followersCount, likesCount
     public static final String USER_STATS_KEY = "user:stats:";
     //用户统计缓存 TTL：7 天（秒），初始化写入，业务访问时刷新
@@ -81,6 +85,10 @@ public class RedisConstants {
     //用户收件箱缓存 TTL：7 天（秒），重建/扇出写入时设置与续期，
     //无独立收件箱表，miss 时由关注对象的最近帖子聚合重建
     public static final Long FEED_USER_TTL = 7 * 24 * 60 * 60L;
+    //用户收件箱重建分布式锁  feed:rebuild:lock:{userId}
+    public static final String FEED_REBUILD_LOCK_KEY = "feed:rebuild:lock:";
+    //重建锁过期时间（秒），防止持锁端宕机导致死锁
+    public static final long FEED_REBUILD_LOCK_TTL_SECONDS = 30L;
 
     //活跃用户    active_users -> ZSET (userId, loginTimestampMs)
     public static final String ACTIVE_USERS_KEY = "active:users";

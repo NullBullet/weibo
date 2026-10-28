@@ -6,9 +6,13 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -16,9 +20,8 @@ import java.util.concurrent.TimeUnit;
  * 数据源：user_following（我关注了谁）/ user_follower（谁关注了我）两张镜像关系表。
  * <p>
  * - TTL：重建与写入时 7 天，避免关系集合永久占用内存；
- * - 写路径（关注/取关）：SADD/SREM 前条件重建，保证返回值反映数据库真实状态——
- * key 丢失时若直接 SADD 会形成只含本次关注者的半截快照，FeedConsumer 据此推送将
- * 漏掉该用户全部其他粉丝；SREM 在 key 缺失时空转，关系永远无法从缓存移除；
+ * - 写路径（关注/取关）：数据库事务提交后执行 SADD/SREM；提交前由业务调用 ensure*
+ *   条件重建，避免 key 丢失时直接 SADD 形成只含本次关注者的半截快照，或 SREM 空转；
  * - 读路径（isFollowed 展示、粉丝推送）：miss 时从数据库重建兜底，
  * FOLLOW_FANS_KEY 丢失会导致粉丝全部收不到新微博（消息仍被 ACK，无补偿机会）；
  * - 空集合哨兵：无关注/无粉丝时不落真实成员，仅写哨兵成员 "0" 占位使 key 存在并带 TTL，
@@ -33,6 +36,19 @@ public class FollowSetHelper {
      * 空集合哨兵成员：userId 恒为正整数，"0" 不会与真实用户冲突
      */
     public static final String EMPTY_SENTINEL = "0";
+
+    /**
+     * 释放锁的 Lua 脚本：仅当锁 value 与自己写入的一致时才删除，防止误删他人的锁
+     */
+    private static final RedisScript<Long> UNLOCK_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+            Long.class);
+
+    /**
+     * 等待他人重建的轮询参数：10 次 x 100ms，超时后跳过本次重建
+     */
+    private static final int WAIT_RETRY_TIMES = 10;
+    private static final long WAIT_INTERVAL_MS = 100L;
 
     @Resource
     private RedisTemplate redisTemplate;
@@ -65,12 +81,51 @@ public class FollowSetHelper {
         if (userId == null) {
             return;
         }
+        String cacheKey = keyOf(type, userId);
         try {
-            if (!Boolean.TRUE.equals(redisTemplate.hasKey(keyOf(type, userId)))) {
-                rebuild(type, userId);
+            if (Boolean.TRUE.equals(redisTemplate.hasKey(cacheKey))) {
+                return;
             }
+
+            String typeKey = type == Type.FOLLOWING ? "following" : "fans";
+            String lockKey = RedisConstants.FOLLOW_SET_LOCK_KEY + typeKey + ":" + userId;
+            String lockValue = UUID.randomUUID().toString();
+            Boolean locked = redisTemplate.opsForValue().setIfAbsent(
+                    lockKey, lockValue, RedisConstants.FOLLOW_SET_LOCK_TTL_SECONDS, TimeUnit.SECONDS);
+
+            if (Boolean.TRUE.equals(locked)) {
+                try {
+                    // double-check：可能已被其他实例重建完成
+                    if (!Boolean.TRUE.equals(redisTemplate.hasKey(cacheKey))) {
+                        rebuild(type, userId);
+                    }
+                } finally {
+                    releaseLock(lockKey, lockValue);
+                }
+                return;
+            }
+
+            // 未抢到锁：等待持锁方完成，避免重复重建
+            for (int i = 0; i < WAIT_RETRY_TIMES; i++) {
+                Thread.sleep(WAIT_INTERVAL_MS);
+                if (Boolean.TRUE.equals(redisTemplate.hasKey(cacheKey))) {
+                    return;
+                }
+            }
+            log.warn("等待关注关系缓存重建超时，跳过本次重建: type={}, userId={}", type, userId);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("等待关注关系缓存重建被中断: type={}, userId={}", type, userId);
         } catch (Exception e) {
             log.warn("确保关注关系缓存存在时异常: type={}, userId={}", type, userId, e);
+        }
+    }
+
+    private void releaseLock(String lockKey, String lockValue) {
+        try {
+            redisTemplate.execute(UNLOCK_SCRIPT, Collections.singletonList(lockKey), lockValue);
+        } catch (Exception e) {
+            log.warn("释放关注关系重建锁失败（等待过期自动释放）: lockKey={}", lockKey, e);
         }
     }
 
@@ -101,7 +156,8 @@ public class FollowSetHelper {
 
     /**
      * 从数据库重建单个用户的关系集合：查询关系表后 SADD 写回（哨兵占位 + TTL）。
-     * 无锁：并发关注/取关与重建写的是同一份 DB 快照，SADD 幂等最终一致。
+     * 重建入口由 ensure 方法用 SET NX PX 锁 + double-check 保护，避免并发重复重建；
+     * 后续关注/取关的缓存维护是 SADD/SREM 原子操作，不做整键覆盖。
      */
     private void rebuild(Type type, Long userId) {
         List<Long> members = type == Type.FOLLOWING

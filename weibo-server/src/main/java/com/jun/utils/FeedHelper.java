@@ -7,13 +7,17 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -40,6 +44,19 @@ public class FeedHelper {
      */
     public static final int FEED_MAX_SIZE = 200;
 
+    /**
+     * 释放锁的 Lua 脚本：仅当锁 value 与自己写入的一致时才删除，防止误删他人的锁
+     */
+    private static final RedisScript<Long> UNLOCK_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+            Long.class);
+
+    /**
+     * 等待他人重建的轮询参数：10 次 x 100ms，超时后跳过本次重建
+     */
+    private static final int WAIT_RETRY_TIMES = 10;
+    private static final long WAIT_INTERVAL_MS = 100L;
+
     @Resource
     private RedisTemplate redisTemplate;
     @Resource
@@ -61,47 +78,89 @@ public class FeedHelper {
                 return;
             }
 
-            // 关注集合可能自身也缺失，复用其读路径兜底后再取
-            followSetHelper.ensureFollowing(userId);
-            Set<Object> raw = redisTemplate.opsForSet()
-                    .members(RedisConstants.FOLLOW_FOLLOWING_KEY + userId);
-            if (raw == null || raw.isEmpty()) {
-                return;
-            }
-            List<Long> followingIds = new ArrayList<>();
-            for (Object o : raw) {
-                String value = o.toString();
-                // 跳过空集合哨兵
-                if (FollowSetHelper.EMPTY_SENTINEL.equals(value)) {
-                    continue;
+            String lockKey = RedisConstants.FEED_REBUILD_LOCK_KEY + userId;
+            String lockValue = UUID.randomUUID().toString();
+            Boolean locked = redisTemplate.opsForValue().setIfAbsent(
+                    lockKey, lockValue, RedisConstants.FEED_REBUILD_LOCK_TTL_SECONDS, TimeUnit.SECONDS);
+
+            if (Boolean.TRUE.equals(locked)) {
+                try {
+                    // double-check：可能已被其他实例重建完成
+                    if (!Boolean.TRUE.equals(redisTemplate.hasKey(feedKey))) {
+                        rebuildFeed(userId, feedKey);
+                    }
+                } finally {
+                    releaseLock(lockKey, lockValue);
                 }
-                followingIds.add(Long.valueOf(value));
-            }
-            if (followingIds.isEmpty()) {
                 return;
             }
 
-            List<Statuses> posts = followMapper.getRecentPostsByUserIds(followingIds, FEED_MAX_SIZE);
-            if (posts == null || posts.isEmpty()) {
-                log.info("重建用户收件箱结果为空: userId={}, following={}", userId, followingIds.size());
-                return;
-            }
-
-            redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
-                for (Statuses post : posts) {
-                    connection.zSetCommands().zAdd(
-                            feedKey.getBytes(),
-                            (double) post.getCreatedAt().toEpochSecond(ZoneOffset.UTC),
-                            post.getId().toString().getBytes()
-                    );
+            // 未抢到锁：等待持锁方完成，避免重复重建
+            for (int i = 0; i < WAIT_RETRY_TIMES; i++) {
+                Thread.sleep(WAIT_INTERVAL_MS);
+                if (Boolean.TRUE.equals(redisTemplate.hasKey(feedKey))) {
+                    return;
                 }
-                connection.keyCommands().expire(feedKey.getBytes(), RedisConstants.FEED_USER_TTL);
-                return null;
-            });
-            log.info("重建用户收件箱: userId={}, following={}, posts={}",
-                    userId, followingIds.size(), posts.size());
+            }
+            log.warn("等待用户收件箱重建超时，跳过本次重建: userId={}", userId);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("等待用户收件箱重建被中断: userId={}", userId);
         } catch (Exception e) {
             log.warn("重建用户收件箱时异常: userId={}", userId, e);
+        }
+    }
+
+    /**
+     * 重建收件箱：关注集合可能自身也缺失，复用其读路径兜底后再取；
+     * 仅用 ZADD 追加成员，不做整键覆盖。
+     */
+    private void rebuildFeed(Long userId, String feedKey) {
+        followSetHelper.ensureFollowing(userId);
+        Set<Object> raw = redisTemplate.opsForSet()
+                .members(RedisConstants.FOLLOW_FOLLOWING_KEY + userId);
+        if (raw == null || raw.isEmpty()) {
+            return;
+        }
+        List<Long> followingIds = new ArrayList<>();
+        for (Object o : raw) {
+            String value = o.toString();
+            // 跳过空集合哨兵
+            if (FollowSetHelper.EMPTY_SENTINEL.equals(value)) {
+                continue;
+            }
+            followingIds.add(Long.valueOf(value));
+        }
+        if (followingIds.isEmpty()) {
+            return;
+        }
+
+        List<Statuses> posts = followMapper.getRecentPostsByUserIds(followingIds, FEED_MAX_SIZE);
+        if (posts == null || posts.isEmpty()) {
+            log.info("重建用户收件箱结果为空: userId={}, following={}", userId, followingIds.size());
+            return;
+        }
+
+        redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
+            for (Statuses post : posts) {
+                connection.zSetCommands().zAdd(
+                        feedKey.getBytes(),
+                        (double) post.getCreatedAt().toEpochSecond(ZoneOffset.UTC),
+                        post.getId().toString().getBytes()
+                );
+            }
+            connection.keyCommands().expire(feedKey.getBytes(), RedisConstants.FEED_USER_TTL);
+            return null;
+        });
+        log.info("重建用户收件箱: userId={}, following={}, posts={}",
+                userId, followingIds.size(), posts.size());
+    }
+
+    private void releaseLock(String lockKey, String lockValue) {
+        try {
+            redisTemplate.execute(UNLOCK_SCRIPT, Collections.singletonList(lockKey), lockValue);
+        } catch (Exception e) {
+            log.warn("释放用户收件箱重建锁失败（等待过期自动释放）: lockKey={}", lockKey, e);
         }
     }
 
