@@ -284,9 +284,12 @@ public class HomeServiceImpl implements HomeService {
         Map<Long, HotStatusVO> map = result.stream()
                 .collect(Collectors.toMap(HotStatusVO::getId, v -> v));
 
-        // 5. 用户信息
+        // 5. 用户信息（feed 中可能残留已删除或查不到的帖子，先过滤空记录）
         List<Long> userIdList = statusIds.stream()
-                .map(id -> map.get(id).getUserId())
+                .map(map::get)
+                .filter(Objects::nonNull)
+                .map(HotStatusVO::getUserId)
+                .filter(Objects::nonNull)
                 .distinct()
                 .toList();
 

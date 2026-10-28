@@ -18,6 +18,8 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.ZoneOffset;
 import java.util.HashMap;
@@ -72,11 +74,6 @@ public class StatusesServiceImpl implements StatusesService {
         map.put("viewCount", 0);
         long createTime = saveStatusVO.getCreatedAt().toEpochSecond(ZoneOffset.UTC);
         map.put("createTime", createTime);
-        redisTemplate.opsForHash().putAll(postStatsKey, map);
-        redisTemplate.expire(postStatsKey, POST_STATS_TTL, TimeUnit.SECONDS);
-
-        // 条件写：key 存在则增量维护，缺失则全量重建（避免半截快照导致主页缺历史微博）
-        userPostIdsHelper.addPost(userId, statusId, createTime);
 
         // MQ 异步推送粉丝收件箱
         FeedMessage feedMessage = FeedMessage.builder()
@@ -89,14 +86,54 @@ public class StatusesServiceImpl implements StatusesService {
 
         CorrelationData correlationData = new CorrelationData(feedMessage.getMessageId());
 
-        rabbitTemplate.convertAndSend(
-                RabbitMQConfig.WEIBO_TOPIC_EXCHANGE,
-                RabbitMQConfig.FEED_PUBLISH,
-                feedMessage,
-                correlationData
-        );
+        // 事务提交后统一维护缓存并分发：
+        // 1. 回滚时不会留下孤立的帖子统计/用户时间线缓存；
+        // 2. FeedConsumer 不会在帖子提交前写入粉丝收件箱。
+        runAfterCommit(() -> {
+            try {
+                // 使用 putIfAbsent 初始化，避免覆盖提交后并发产生的点赞/评论增量
+                for (Map.Entry<String, Object> entry : map.entrySet()) {
+                    redisTemplate.opsForHash().putIfAbsent(postStatsKey, entry.getKey(), entry.getValue());
+                }
+                redisTemplate.expire(postStatsKey, POST_STATS_TTL, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                log.error("发帖统计缓存初始化失败: statusId={}, userId={}", statusId, userId, e);
+            }
+
+            // 内部已捕获异常，失败时由读路径重建
+            userPostIdsHelper.addPost(userId, statusId, createTime);
+
+            try {
+                rabbitTemplate.convertAndSend(
+                        RabbitMQConfig.WEIBO_TOPIC_EXCHANGE,
+                        RabbitMQConfig.FEED_PUBLISH,
+                        feedMessage,
+                        correlationData
+                );
+            } catch (Exception e) {
+                log.error("发帖 Feed 消息发送失败: statusId={}, userId={}, messageId={}",
+                        statusId, userId, feedMessage.getMessageId(), e);
+            }
+        });
 
         return Result.success(saveStatusVO);
+    }
+
+    /**
+     * 数据库事务提交后执行缓存维护和 MQ 发送。若当前没有事务同步（例如非代理调用），
+     * 则直接执行，保持降级行为。
+     */
+    private void runAfterCommit(Runnable action) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            action.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                action.run();
+            }
+        });
     }
 
     @Override
