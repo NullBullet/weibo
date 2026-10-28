@@ -139,6 +139,13 @@ public class UsersServiceImpl implements UsersService {
         if (isSuccess <= 0) {
             return Result.error("更新个人信息失败！");
         }
+
+        // 更新成功后删除用户缓存，避免旧昵称/头像在缓存 TTL 内继续展示
+        redisTemplate.delete(List.of(
+                USER_PROFILE_KEY + userId,
+                USER_INFO_KEY + userId
+        ));
+
         return Result.success(fileUrl);
     }
 
