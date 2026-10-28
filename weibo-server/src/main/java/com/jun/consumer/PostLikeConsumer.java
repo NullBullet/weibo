@@ -21,7 +21,7 @@ import static com.jun.constant.RedisConstants.MQ_IDEMPOTENT_KEY;
 
 @Component
 @Slf4j
-public class LikeConsumer {
+public class PostLikeConsumer {
 
     @Resource
     private PostMapper postMapper;
@@ -37,7 +37,7 @@ public class LikeConsumer {
 
         long deliveryTag = msg.getMessageProperties().getDeliveryTag();
 
-        String key = MQ_IDEMPOTENT_KEY + message.getMessageId();
+        String key = MQ_IDEMPOTENT_KEY + RabbitMQConfig.LIKE_QUEUE + ":" + message.getMessageId();
         Boolean exists = redisTemplate.hasKey(key);
         if (Boolean.TRUE.equals(exists)) {
             log.info("消息已处理，直接ACK:{}", message.getMessageId());

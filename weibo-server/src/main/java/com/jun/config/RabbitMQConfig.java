@@ -32,14 +32,14 @@ public class RabbitMQConfig {
     //取消点赞
     public static final String POST_CANCEL = "post.cancel";
 
-    // ======================== 通知队列 ========================
+    // ======================== 帖子点赞通知队列 ========================
 
-    public static final String NOTICE_QUEUE = "notice.queue";
-    public static final String NOTICE_DLQ = "notice.dlq";
-    public static final String NOTICE_DLX = "notice.dlx";
-    public static final String NOTICE_DLQ_ROUTING_KEY = "notice.dlq";
-    public static final String NOTICE_RETRY_QUEUE = "notice.retry.queue";
-    public static final Integer NOTICE_MAX_RETRY_COUNT = 3;
+    public static final String NOTICE_POST_LIKE_QUEUE = "notice.post.like.queue";
+    public static final String NOTICE_POST_LIKE_DLQ = "notice.post.like.dlq";
+    public static final String NOTICE_POST_LIKE_DLX = "notice.post.like.dlx";
+    public static final String NOTICE_POST_LIKE_DLQ_ROUTING_KEY = "notice.post.like.dlq";
+    public static final String NOTICE_POST_LIKE_RETRY_QUEUE = "notice.post.like.retry.queue";
+    public static final Integer NOTICE_POST_LIKE_MAX_RETRY_COUNT = 3;
 
     // ======================== 评论通知队列 ========================
 
@@ -243,58 +243,58 @@ public class RabbitMQConfig {
                 .with("post.cancel");
     }
 
-    // ======================== 通知队列 Bean ========================
+    // ======================== 帖子点赞通知队列 Bean ========================
 
     @Bean
-    public Queue noticeQueue() {
+    public Queue noticePostLikeQueue() {
         Map<String, Object> args = new HashMap<>();
-        args.put("x-dead-letter-exchange", NOTICE_DLX);
-        args.put("x-dead-letter-routing-key", NOTICE_DLQ_ROUTING_KEY);
-        return new Queue(NOTICE_QUEUE, true, false, false, args);
+        args.put("x-dead-letter-exchange", NOTICE_POST_LIKE_DLX);
+        args.put("x-dead-letter-routing-key", NOTICE_POST_LIKE_DLQ_ROUTING_KEY);
+        return new Queue(NOTICE_POST_LIKE_QUEUE, true, false, false, args);
     }
 
     @Bean
-    public DirectExchange noticeDeadLetterExchange() {
-        return new DirectExchange(NOTICE_DLX);
+    public DirectExchange noticePostLikeDeadLetterExchange() {
+        return new DirectExchange(NOTICE_POST_LIKE_DLX);
     }
 
     @Bean
-    public Queue noticeDeadLetterQueue() {
-        return new Queue(NOTICE_DLQ, true);
+    public Queue noticePostLikeDeadLetterQueue() {
+        return new Queue(NOTICE_POST_LIKE_DLQ, true);
     }
 
     @Bean
-    public Binding noticeDeadLetterBinding() {
+    public Binding noticePostLikeDeadLetterBinding() {
         return BindingBuilder
-                .bind(noticeDeadLetterQueue())
-                .to(noticeDeadLetterExchange())
-                .with(NOTICE_DLQ_ROUTING_KEY);
+                .bind(noticePostLikeDeadLetterQueue())
+                .to(noticePostLikeDeadLetterExchange())
+                .with(NOTICE_POST_LIKE_DLQ_ROUTING_KEY);
     }
 
     @Bean
-    public Queue noticeRetryQueue() {
+    public Queue noticePostLikeRetryQueue() {
         Map<String, Object> args = new HashMap<>();
         args.put("x-message-ttl", 5000);
         args.put("x-dead-letter-exchange", "");
-        args.put("x-dead-letter-routing-key", NOTICE_QUEUE);
-        return new Queue(NOTICE_RETRY_QUEUE, true, false, false, args);
+        args.put("x-dead-letter-routing-key", NOTICE_POST_LIKE_QUEUE);
+        return new Queue(NOTICE_POST_LIKE_RETRY_QUEUE, true, false, false, args);
     }
 
     /**
-     * 监听帖子点赞/取消 → 通知（与 like.queue 形成多消费者）
+     * 监听帖子点赞/取消 → 帖子点赞通知（与 like.queue 形成多消费者）
      */
     @Bean
-    public Binding noticeLikeBinding() {
+    public Binding noticePostLikeBinding() {
         return BindingBuilder
-                .bind(noticeQueue())
+                .bind(noticePostLikeQueue())
                 .to(weiboTopicExchange())
                 .with("post.like");
     }
 
     @Bean
-    public Binding noticeCancelBinding() {
+    public Binding noticePostCancelBinding() {
         return BindingBuilder
-                .bind(noticeQueue())
+                .bind(noticePostLikeQueue())
                 .to(weiboTopicExchange())
                 .with("post.cancel");
     }

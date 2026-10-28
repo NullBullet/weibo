@@ -38,7 +38,7 @@ public class NoticeCommentConsumer {
         long deliveryTag = msg.getMessageProperties().getDeliveryTag();
 
         // 幂等检查
-        String key = MQ_IDEMPOTENT_KEY + message.getMessageId();
+        String key = MQ_IDEMPOTENT_KEY + RabbitMQConfig.NOTICE_COMMENT_QUEUE + ":" + message.getMessageId();
         Boolean exists = redisTemplate.hasKey(key);
         if (Boolean.TRUE.equals(exists)) {
             log.info("评论通知消息已处理，直接ACK: {}", message.getMessageId());

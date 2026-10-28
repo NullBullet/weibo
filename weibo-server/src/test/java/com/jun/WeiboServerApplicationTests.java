@@ -623,7 +623,7 @@ public class WeiboServerApplicationTests {
             redisTemplate.opsForHash().increment(USER_STATS_KEY + postOwnerId, "likesCount", 1);
         }
 
-        // 3. 消费者 LikeConsumer: 写入 attitudes 表 + 更新 statuses.attitudes_count
+        // 3. 消费者 PostLikeConsumer: 写入 attitudes 表 + 更新 statuses.attitudes_count
         try {
             ToggleLikeDTO likeDTO = new ToggleLikeDTO();
             likeDTO.setUserId(userId);
@@ -632,7 +632,7 @@ public class WeiboServerApplicationTests {
             postMapper.saveLikeInfo(likeDTO);
             postMapper.updateStatusLikeCount(1, statusId);
         } catch (Exception e) {
-            System.out.println("LikeConsumer 落库失败: " + e.getMessage());
+            System.out.println("PostLikeConsumer 落库失败: " + e.getMessage());
         }
 
         // 4. 消费者 NoticeLikeConsumer: 写入 notification_like

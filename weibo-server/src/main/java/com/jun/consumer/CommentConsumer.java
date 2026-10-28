@@ -37,7 +37,7 @@ public class CommentConsumer {
         long deliveryTag = msg.getMessageProperties().getDeliveryTag();
 
         // 幂等：检查消息是否已处理
-        String key = MQ_IDEMPOTENT_KEY + message.getMessageId();
+        String key = MQ_IDEMPOTENT_KEY + RabbitMQConfig.COMMENT_QUEUE + ":" + message.getMessageId();
         Boolean exists = redisTemplate.hasKey(key);
         if (Boolean.TRUE.equals(exists)) {
             log.info("评论消息已处理，直接ACK: {}", message.getMessageId());
