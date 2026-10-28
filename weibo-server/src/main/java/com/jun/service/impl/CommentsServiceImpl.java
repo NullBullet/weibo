@@ -232,16 +232,7 @@ public class CommentsServiceImpl implements CommentsService {
         //7. DB: statuses.comments_count 扣减
         commentsMapper.decreaseStatusCommentCount(statusId, deleteCount);
 
-        //8. Redis: 评论计数扣减
-        String statsKey = POST_STATS_KEY + statusId;
-        redisTemplate.opsForHash().increment(statsKey, "commentCount", -deleteCount);
-
-        //8.1 Redis: 删除回复时父评论回复数递减（hash 已由 3.1 确保完整，不会创建残缺 hash）
-        if (comment.getParentId() != null) {
-            commentStatsHelper.incrementReply(comment.getParentId(), -1);
-        }
-
-        //8.2 清理被删评论自身的统计缓存与点赞集合
+        //8. 清理被删评论自身的统计缓存与点赞集合（缓存失效保持在提交前，回滚只会导致 miss 重建）
         redisTemplate.delete(COMMENT_STATS_KEY + commentId);
         redisTemplate.delete(LIKE_COMMENT_KEY + commentId);
         if (replyIds != null && !replyIds.isEmpty()) {
@@ -256,6 +247,18 @@ public class CommentsServiceImpl implements CommentsService {
         if (comment.getParentId() != null) {
             deleteReplyListCache(comment.getParentId());
         }
+
+        //10. Redis 计数扣减延迟到事务提交后：
+        // ensureStats 已在 DB 变更前建立基线，提交后只做原子扣减；
+        // 若缓存缺失，Helper 会从 DB 重建（已包含本次删除），不再重复扣减
+        final Long parentId = comment.getParentId();
+        final int removedCount = deleteCount;
+        runAfterCommit(() -> {
+            postStatsHelper.incrementCommentCountAfterCommit(statusId, -removedCount);
+            if (parentId != null) {
+                commentStatsHelper.incrementReplyAfterCommit(parentId, -1);
+            }
+        });
 
         return Result.success();
     }

@@ -153,6 +153,28 @@ public class PostStatsHelper {
     }
 
     /**
+     * 提交后评论数增量：缓存完整时执行 HINCRBY；
+     * 缓存缺失/残缺时从 DB 重建（DB 已包含本次提交的变更），不再重复应用 delta。
+     */
+    public void incrementCommentCountAfterCommit(Long statusId, long delta) {
+        if (statusId == null) {
+            return;
+        }
+        try {
+            String statsKey = POST_STATS_KEY + statusId;
+            Map<Object, Object> entries = redisTemplate.opsForHash().entries(statsKey);
+            if (!isCompleteStats(entries)) {
+                rebuild(statusId);
+                return;
+            }
+            redisTemplate.opsForHash().increment(statsKey, FIELD_COMMENT_COUNT, delta);
+            redisTemplate.expire(statsKey, POST_STATS_TTL, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.warn("提交后更新帖子评论数失败: statusId={}", statusId, e);
+        }
+    }
+
+    /**
      * 缺失/残缺时的重建流程：分布式锁 + double-check + HSETNX 补齐。
      * 返回重建后的完整统计；帖子不存在或数据库异常时返回 null。
      */
