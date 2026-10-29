@@ -4,6 +4,7 @@ import com.jun.config.RabbitMQConfig;
 import com.jun.context.BaseContext;
 import com.jun.dto.RepostDTO;
 import com.jun.dto.ToggleLikeDTO;
+import com.jun.entity.Statuses;
 import com.jun.enumeration.TargetType;
 import com.jun.mapper.PostMapper;
 import com.jun.mq.message.LikeMessage;
@@ -242,29 +243,8 @@ public class PostServiceImpl implements PostService {
         Long originalStatus = postMapper.getOriginalStatus(forwardId);
         Long originalStatusId = (originalStatus == null) ? forwardId : originalStatus;
 
-        // 防御：原微博统计缓存缺失时先重建，避免 HINCRBY 在 key 丢失时创建残缺 hash
-        postStatsHelper.ensureStats(originalStatusId);
-
-        // Redis 同步：原微博 repost_count +1
-        String postStatusKey = POST_STATS_KEY + originalStatusId;
-        redisTemplate.opsForHash().increment(postStatusKey, "forwardCount", 1);
-
-        //更新热度排行榜
-        Map postStats = redisTemplate.opsForHash().entries(postStatusKey);
-        Long likeCount1 = parseStatLong(postStats.get("likeCount"));
-        Long commentCount = parseStatLong(postStats.get("commentCount"));
-        Long forwardCount = parseStatLong(postStats.get("forwardCount"));
-        Long viewCount = parseStatLong(postStats.get("viewCount"));
-        Long createTime = parseStatLong(postStats.get("createTime"));
-        if (createTime == 0) {
-            createTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
-        }
-
-        double score = HotScoreCalculator.calculate(viewCount, likeCount1, commentCount, forwardCount, createTime);
-        redisTemplate.opsForZSet().add(HOT_POST_ZSET_KEY, originalStatusId.toString(), score);
-        redisTemplate.opsForSet().add(HOT_POST_CANDIDATE_KEY, originalStatusId.toString());
-
         // MQ 异步入库：创建转发微博 + 更新原微博 reposts_count
+        // Redis 转发统计、热榜、用户时间线和 Feed 统一由消费者在数据库提交后维护
         RepostMessage message = RepostMessage.builder()
                 .messageId(UUID.randomUUID().toString())
                 .userId(currentId)
@@ -286,5 +266,24 @@ public class PostServiceImpl implements PostService {
         activityService.handleForwardActivity(originalStatusId, currentId, null);
 
         return Result.success();
+    }
+
+    @Transactional
+    @Override
+    public Statuses saveForwardStatus(RepostMessage message) {
+        // 防御：在 DB 更新前建立原微博统计缓存基线，提交后只做增量，避免重建读到本次变更后重复累加
+        postStatsHelper.ensureStats(message.getOriginalStatusId());
+
+        Statuses forwardStatus = Statuses.builder()
+                .userId(message.getUserId())
+                .content(message.getContent())
+                .statusType(1)
+                .originalStatusId(message.getOriginalStatusId())
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        postMapper.saveForwardStatus(forwardStatus);
+        postMapper.updateStatusRepostCount(1, message.getOriginalStatusId());
+        return forwardStatus;
     }
 }

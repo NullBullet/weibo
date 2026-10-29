@@ -175,6 +175,29 @@ public class PostStatsHelper {
     }
 
     /**
+     * 提交后转发数增量：缓存完整时执行 HINCRBY 并返回最新统计供热榜计算；
+     * 缓存缺失/残缺时从 DB 重建（DB 已包含本次提交的变更），不再重复应用 delta。
+     */
+    public Map<Object, Object> incrementForwardCountAfterCommit(Long statusId, long delta) {
+        if (statusId == null) {
+            return null;
+        }
+        try {
+            String statsKey = POST_STATS_KEY + statusId;
+            Map<Object, Object> entries = redisTemplate.opsForHash().entries(statsKey);
+            if (!isCompleteStats(entries)) {
+                return rebuild(statusId);
+            }
+            redisTemplate.opsForHash().increment(statsKey, FIELD_FORWARD_COUNT, delta);
+            redisTemplate.expire(statsKey, POST_STATS_TTL, TimeUnit.SECONDS);
+            return redisTemplate.opsForHash().entries(statsKey);
+        } catch (Exception e) {
+            log.warn("提交后更新帖子转发数失败: statusId={}", statusId, e);
+            return null;
+        }
+    }
+
+    /**
      * 缺失/残缺时的重建流程：分布式锁 + double-check + HSETNX 补齐。
      * 返回重建后的完整统计；帖子不存在或数据库异常时返回 null。
      */
