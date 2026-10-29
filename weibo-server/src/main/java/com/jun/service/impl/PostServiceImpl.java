@@ -16,9 +16,12 @@ import com.jun.utils.HotScoreCalculator;
 import com.jun.utils.LikeSetHelper;
 import com.jun.utils.PostStatsHelper;
 import com.jun.utils.UserStatsHelper;
+import com.jun.vo.RepostVO;
+import com.jun.vo.RewardCheckVO;
 import com.jun.vo.ToggleLikeVO;
 import jakarta.annotation.Resource;
 import lombok.NonNull;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -34,6 +37,7 @@ import static com.jun.config.RabbitMQConfig.*;
 import static com.jun.constant.RedisConstants.*;
 import static java.lang.Long.parseLong;
 
+@Slf4j
 @Service
 public class PostServiceImpl implements PostService {
 
@@ -262,10 +266,20 @@ public class PostServiceImpl implements PostService {
                 correlationData
         );
 
-        //活动系统
-        activityService.handleForwardActivity(originalStatusId, currentId, null);
+        //活动系统：同步校验结果随转发接口返回（PENDING 表示参与记录已提交 MQ、等待落库，
+        //最终落库结果由消费者推送 REWARD_RESULT）。活动系统异常只记录日志，不能让已受理的
+        //转发请求返回失败，否则前端重试会造成重复转发。该微博无活动时 reward 为 null
+        RewardCheckVO reward = null;
+        try {
+            reward = activityService.handleForwardActivity(originalStatusId, currentId, null);
+        } catch (Exception e) {
+            log.warn("转发后抽奖参与校验失败: originalStatusId={}, userId={}", originalStatusId, currentId, e);
+        }
 
-        return Result.success();
+        return Result.success(RepostVO.builder()
+                .originalStatusId(originalStatusId)
+                .reward(reward)
+                .build());
     }
 
     @Transactional

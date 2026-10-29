@@ -261,7 +261,7 @@ public class RewardServiceImpl implements RewardService {
     }
 
     @Override
-    public void handleForwardReward(Long activityId, Long userId, Long statusId) {
+    public RewardCheckVO handleForwardReward(Long activityId, Long userId, Long statusId) {
         // 1. 从 Redis 缓存读取活动信息（避免高并发下查 DB）
         String infoKey = REWARD_ACTIVITY_INFO_KEY + activityId;
         Map<Object, Object> infoMap = redisTemplate.opsForHash().entries(infoKey);
@@ -290,7 +290,7 @@ public class RewardServiceImpl implements RewardService {
             RewardActivity activity = rewardActivityMapper.getById(activityId);
             if (activity == null) {
                 log.warn("活动不存在: activityId={}", activityId);
-                return;
+                return null;
             }
             activityType = activity.getActivityType();
             activityStatus = activity.getStatus();
@@ -332,14 +332,18 @@ public class RewardServiceImpl implements RewardService {
         // 2. 检查活动状态：未开始或已结束均拒绝
         if (!ACTIVITY_STATUS_ACTIVE.equals(activityStatus)) {
             log.warn("活动不可参与: activityId={}, status={}", activityId, activityStatus);
-            return;
+            // 同步拒绝不进入 MQ 落库，直接随转发接口返回原因
+            return buildRewardCheck(activityId, statusId,
+                    ACTIVITY_STATUS_PENDING.equals(activityStatus)
+                            ? RewardCheckVO.STATE_NOT_STARTED
+                            : RewardCheckVO.STATE_ENDED);
         }
 
         // 3. 缓存命中时，额外检查 startTime（防止 TTL 未到 startTime 但缓存仍在）
         if (startTimeEpoch != null
                 && startTimeEpoch > LocalDateTime.now().toEpochSecond(java.time.ZoneOffset.UTC)) {
             log.warn("活动尚未开始: activityId={}", activityId);
-            return;
+            return buildRewardCheck(activityId, statusId, RewardCheckVO.STATE_NOT_STARTED);
         }
 
         // 3. 检查粉丝限制：fanOnly 表示「仅创建者的粉丝可参与」，即参与者是否已关注创建者
@@ -351,7 +355,7 @@ public class RewardServiceImpl implements RewardService {
             Boolean isFan = redisTemplate.opsForSet().isMember(followingKey, creatorId.toString());
             if (!Boolean.TRUE.equals(isFan)) {
                 log.warn("非粉丝参与被拒绝: activityId={}, userId={}", activityId, userId);
-                return;
+                return buildRewardCheck(activityId, statusId, RewardCheckVO.STATE_NOT_FAN);
             }
         }
 
@@ -367,7 +371,7 @@ public class RewardServiceImpl implements RewardService {
                 activityStatus.toString()
         );
 
-        // 5. 处理结果
+        // 5. 处理结果（result == 0 时 MQ 异步落库，最终落库结果由 RewardJoinConsumer 推送 REWARD_RESULT）
         if (result == 0) {
             // 成功获得资格 → 发送MQ异步落库
             RewardJoinMessage message = RewardJoinMessage.builder()
@@ -386,13 +390,29 @@ public class RewardServiceImpl implements RewardService {
                     correlationData
             );
             log.info("转发参与资格成功: activityId={}, userId={}", activityId, userId);
+            return buildRewardCheck(activityId, statusId, RewardCheckVO.STATE_PENDING);
         } else if (result == 1) {
             log.info("用户已参与: activityId={}, userId={}", activityId, userId);
+            return buildRewardCheck(activityId, statusId, RewardCheckVO.STATE_JOINED);
         } else if (result == 2) {
             log.info("名额已满: activityId={}, userId={}", activityId, userId);
+            return buildRewardCheck(activityId, statusId, RewardCheckVO.STATE_FULL);
         } else if (result == 3) {
             log.info("活动已结束: activityId={}, userId={}", activityId, userId);
+            return buildRewardCheck(activityId, statusId, RewardCheckVO.STATE_ENDED);
         }
+        return null;
+    }
+
+    /**
+     * 构造抽奖参与同步校验结果
+     */
+    private RewardCheckVO buildRewardCheck(Long activityId, Long statusId, String state) {
+        return RewardCheckVO.builder()
+                .activityId(activityId)
+                .statusId(statusId)
+                .state(state)
+                .build();
     }
 
     /**

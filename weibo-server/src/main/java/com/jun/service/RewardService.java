@@ -3,6 +3,7 @@ package com.jun.service;
 import com.jun.dto.CreateRewardActivityDTO;
 import com.jun.result.Result;
 import com.jun.vo.ExtensionVO;
+import com.jun.vo.RewardCheckVO;
 
 import java.util.List;
 import java.util.Map;
@@ -40,9 +41,11 @@ public interface RewardService {
     Result getMyRecords(Integer page, Integer pageSize, Integer onlyWon);
 
     /**
-     * 处理转发参与活动
+     * 处理转发参与活动，返回同步校验结果。
+     * 活动不存在（缓存与数据库均未命中）时返回 null；
+     * 校验通过并已提交 MQ 落库时 state = PENDING，拒绝时为对应原因。
      */
-    void handleForwardReward(Long activityId, Long userId, Long statusId);
+    RewardCheckVO handleForwardReward(Long activityId, Long userId, Long statusId);
 
     /**
      * 批量查询帖子扩展信息（statusId → 扩展列表），避免 N+1

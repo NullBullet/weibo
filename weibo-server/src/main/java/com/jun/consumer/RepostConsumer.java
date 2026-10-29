@@ -8,6 +8,8 @@ import com.jun.service.PostService;
 import com.jun.utils.HotScoreCalculator;
 import com.jun.utils.PostStatsHelper;
 import com.jun.utils.UserPostIdsHelper;
+import com.jun.vo.RepostResultVO;
+import com.jun.websocket.ChatWebSocketHandler;
 import com.rabbitmq.client.Channel;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +45,8 @@ public class RepostConsumer {
     private UserPostIdsHelper userPostIdsHelper;
     @Resource
     private PostStatsHelper postStatsHelper;
+    @Resource
+    private ChatWebSocketHandler chatWebSocketHandler;
 
     /**
      * 统计字段安全解析：缺失或脏数据返回 0，不抛异常
@@ -89,6 +93,9 @@ public class RepostConsumer {
             // 幂等标记（7天）
             redisTemplate.opsForValue().set(key, "1", 7, TimeUnit.DAYS);
 
+            // 落库成功后推送转发结果，前端据此确认转发成功（推送失败仅记录日志，不影响 ACK）
+            notifyRepostResult(message, true, forwardStatusId);
+
             // 手动ACK
             channel.basicAck(deliveryTag, false);
             log.info("转发消息消费成功: forwardId={}, originalId={}",
@@ -104,6 +111,8 @@ public class RepostConsumer {
 
             if (retryCount >= REPOST_MAX_RETRY_COUNT) {
                 log.error("转发达到最大重试次数，进入死信队列");
+                // 重试耗尽仍未落库，推送失败结果，前端据此提示转发失败
+                notifyRepostResult(message, false, null);
                 channel.basicNack(deliveryTag, false, false);
                 return;
             } else {
@@ -114,6 +123,28 @@ public class RepostConsumer {
                 );
             }
             channel.basicAck(deliveryTag, false);
+        }
+    }
+
+    /**
+     * 转发落库结果推送：成功携带新转发微博 ID；失败（重试耗尽进入死信）success=false。
+     * 推送异常完全吞掉，绝不影响已完成的持久化与 ACK 流程。
+     */
+    private void notifyRepostResult(RepostMessage message, boolean success, Long forwardStatusId) {
+        try {
+            chatWebSocketHandler.sendNotification(
+                    message.getUserId(),
+                    RepostResultVO.builder()
+                            .type(RepostResultVO.TYPE)
+                            .success(success)
+                            .originalStatusId(message.getOriginalStatusId())
+                            .forwardStatusId(forwardStatusId)
+                            .build(),
+                    RepostResultVO.TYPE
+            );
+        } catch (Exception e) {
+            log.warn("转发结果推送失败: userId={}, originalStatusId={}, forwardId={}",
+                    message.getUserId(), message.getOriginalStatusId(), forwardStatusId, e);
         }
     }
 

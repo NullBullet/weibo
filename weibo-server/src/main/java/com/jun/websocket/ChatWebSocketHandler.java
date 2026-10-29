@@ -302,6 +302,33 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         sendMessageQuietly(session, new TextMessage(json), "UNREAD_COUNT");
     }
 
+    /**
+     * 向指定用户的所有在线连接推送业务通知（多标签页同时在线时每个连接都收到），
+     * 适用于 MQ 消费者等无 WebSocket 上下文的场景（如转发落库结果、抽奖参与结果）。
+     * 负载由调用方构造，type 字段标识消息类型；用户不在线时静默跳过，
+     * 序列化或发送失败仅记录日志，不向调用方抛出，保证推送失败不影响消费与 ACK 流程。
+     */
+    public void sendNotification(Long userId, Object payload, String scene) {
+        List<WebSocketSession> sessions = safeOnlineUsers.get(userId);
+        if (sessions == null || sessions.isEmpty()) {
+            return;
+        }
+
+        String json;
+        try {
+            json = objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException e) {
+            log.warn("构造 WebSocket 推送负载失败，scene = {}，userId = {}", scene, userId, e);
+            return;
+        }
+
+        for (WebSocketSession session : sessions) {
+            if (session.isOpen()) {
+                sendMessageQuietly(session, new TextMessage(json), scene);
+            }
+        }
+    }
+
     // 修改：统一构造 ERROR 响应；clientMessageId 非空时携带，供前端精确匹配失败的发送消息；
     // 未携带（如非法 JSON、不支持的消息类型等连接级/协议级错误）时前端只提示，不影响任何消息状态。
     // 单次发送、失败仅记录日志，不重试，避免连接已不可用时反复发送 ERROR

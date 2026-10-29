@@ -5,6 +5,8 @@ import com.jun.entity.RewardRecord;
 import com.jun.mapper.RewardActivityMapper;
 import com.jun.mapper.RewardRecordMapper;
 import com.jun.mq.message.RewardJoinMessage;
+import com.jun.vo.RewardResultVO;
+import com.jun.websocket.ChatWebSocketHandler;
 import com.rabbitmq.client.Channel;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +35,8 @@ public class RewardJoinConsumer {
     private RabbitTemplate rabbitTemplate;
     @Resource
     private RedisTemplate redisTemplate;
+    @Resource
+    private ChatWebSocketHandler chatWebSocketHandler;
 
     @RabbitListener(
             queues = RabbitMQConfig.REWARD_JOIN_QUEUE,
@@ -51,12 +55,15 @@ public class RewardJoinConsumer {
         }
 
         try {
-            // 检查重复记录（唯一约束兜底）
+            // 检查重复记录（唯一约束兜底）：命中说明参与记录已落库（典型场景是上次处理
+            // 在插入后中途失败进入重试），补发参与成功通知；纯幂等重放已被上方 Redis
+            // 幂等标记拦截，不会走到这里，因此不会重复推送
             Integer count = rewardRecordMapper.countByActivityIdAndUserId(
                     message.getActivityId(), message.getUserId());
             if (count != null && count > 0) {
                 log.info("参与记录已存在: activityId={}, userId={}", message.getActivityId(), message.getUserId());
                 redisTemplate.opsForValue().set(key, "1", 7, TimeUnit.DAYS);
+                notifyRewardResult(message, true, RewardResultVO.REASON_JOINED);
                 channel.basicAck(deliveryTag, false);
                 return;
             }
@@ -91,6 +98,9 @@ public class RewardJoinConsumer {
             // 幂等标记（7天）
             redisTemplate.opsForValue().set(key, "1", 7, TimeUnit.DAYS);
 
+            // 参与记录落库成功后推送抽奖参与结果（推送失败仅记录日志，不影响 ACK）
+            notifyRewardResult(message, true, RewardResultVO.REASON_JOINED);
+
             channel.basicAck(deliveryTag, false);
             log.info("奖励参与记录保存成功: activityId={}, userId={}",
                     message.getActivityId(), message.getUserId());
@@ -105,6 +115,8 @@ public class RewardJoinConsumer {
 
             if (retryCount >= RabbitMQConfig.REWARD_MAX_RETRY_COUNT) {
                 log.error("奖励参与达到最大重试次数，进入死信队列");
+                // 重试耗尽仍未落库，推送失败结果，前端据此提示参与失败
+                notifyRewardResult(message, false, RewardResultVO.REASON_SAVE_FAILED);
                 channel.basicNack(deliveryTag, false, false);
                 return;
             } else {
@@ -116,6 +128,29 @@ public class RewardJoinConsumer {
             }
 
             channel.basicAck(deliveryTag, false);
+        }
+    }
+
+    /**
+     * 抽奖参与结果推送：joined=true 表示参与记录已落库；落库失败进死信时 joined=false。
+     * 推送异常完全吞掉，绝不影响已完成的持久化与 ACK 流程。
+     */
+    private void notifyRewardResult(RewardJoinMessage message, boolean joined, String reason) {
+        try {
+            chatWebSocketHandler.sendNotification(
+                    message.getUserId(),
+                    RewardResultVO.builder()
+                            .type(RewardResultVO.TYPE)
+                            .activityId(message.getActivityId())
+                            .statusId(message.getStatusId())
+                            .joined(joined)
+                            .reason(reason)
+                            .build(),
+                    RewardResultVO.TYPE
+            );
+        } catch (Exception e) {
+            log.warn("抽奖参与结果推送失败: activityId={}, userId={}",
+                    message.getActivityId(), message.getUserId(), e);
         }
     }
 }
