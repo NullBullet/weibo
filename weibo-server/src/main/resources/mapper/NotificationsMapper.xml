@@ -10,7 +10,13 @@
                last_like_time as lastLikeTime
         from notification_like
         where receiver_id = #{receiverId}
-        order by last_like_time desc
+          and like_count &gt; 0
+        <if test="cursorTime != null and cursorId != null">
+            and (last_like_time &lt; #{cursorTime}
+                or (last_like_time = #{cursorTime} and id &lt; #{cursorId}))
+        </if>
+        order by last_like_time desc, id desc
+        limit #{limit}
     </select>
 
     <select id="getPostContents" resultType="map">

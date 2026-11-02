@@ -14,6 +14,8 @@ import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
@@ -24,6 +26,16 @@ public class NotificationsServiceImpl implements NotificationsService {
 
     private static final DateTimeFormatter DTF = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
+    /**
+     * 点赞通知每页固定 20 条
+     */
+    private static final int LIKE_NOTIFICATION_PAGE_SIZE = 20;
+
+    /**
+     * 游标内部字段分隔符
+     */
+    private static final String CURSOR_SEPARATOR = "|";
+
     @Resource
     private NotificationsMapper notificationsMapper;
     @Resource
@@ -32,19 +44,46 @@ public class NotificationsServiceImpl implements NotificationsService {
     private RewardActivityMapper rewardActivityMapper;
 
     @Override
-    public Result getLikeInfo() {
+    public Result getLikeInfo(String cursor) {
         Long receiverId = BaseContext.getCurrentId();
 
-        // 1. 查询聚合通知
-        List<NotificationRawVO> rawList = notificationsMapper.getLikeNotifications(receiverId);
+        LikeCursor likeCursor;
+        try {
+            likeCursor = decodeCursor(cursor);
+        } catch (IllegalArgumentException e) {
+            return Result.error("非法的分页游标");
+        }
+
+        // 1. 多查一条，用于判断是否还有下一页
+        List<NotificationRawVO> rawList = notificationsMapper.getLikeNotifications(
+                receiverId,
+                likeCursor == null ? null : likeCursor.getLastLikeTime(),
+                likeCursor == null ? null : likeCursor.getNotificationId(),
+                LIKE_NOTIFICATION_PAGE_SIZE + 1);
         if (rawList == null || rawList.isEmpty()) {
-            return Result.success(new ArrayList<>());
+            return Result.success(emptyPage());
+        }
+
+        boolean hasMore = rawList.size() > LIKE_NOTIFICATION_PAGE_SIZE;
+        List<NotificationRawVO> pageRows = hasMore
+                ? rawList.subList(0, LIKE_NOTIFICATION_PAGE_SIZE)
+                : rawList;
+
+        // 游标取本页最后一条原始记录：即使该通知内容已删除也要推进游标，避免下一页重复/卡住
+        String nextCursor = null;
+        if (hasMore) {
+            NotificationRawVO lastRow = pageRows.get(pageRows.size() - 1);
+            if (lastRow.getLastLikeTime() == null) {
+                hasMore = false;
+            } else {
+                nextCursor = encodeCursor(lastRow);
+            }
         }
 
         // 2. 按 targetType 分组收集 targetId
         List<Integer> postIds = new ArrayList<>();
         List<Integer> commentIds = new ArrayList<>();
-        for (NotificationRawVO raw : rawList) {
+        for (NotificationRawVO raw : pageRows) {
             if (raw.getLikeCount() == null || raw.getLikeCount() == 0) {
                 continue;
             }
@@ -69,7 +108,7 @@ public class NotificationsServiceImpl implements NotificationsService {
 
         // 5. 组装 VO
         List<LikeNotificationVO> voList = new ArrayList<>();
-        for (NotificationRawVO raw : rawList) {
+        for (NotificationRawVO raw : pageRows) {
             if (raw.getLikeCount() == null || raw.getLikeCount() == 0) {
                 continue;
             }
@@ -107,7 +146,70 @@ public class NotificationsServiceImpl implements NotificationsService {
             voList.add(vo);
         }
 
-        return Result.success(voList);
+        LikeNotificationPageVO page = new LikeNotificationPageVO();
+        page.setRecords(voList);
+        page.setNextCursor(nextCursor);
+        page.setHasMore(hasMore);
+        return Result.success(page);
+    }
+
+    private LikeNotificationPageVO emptyPage() {
+        LikeNotificationPageVO page = new LikeNotificationPageVO();
+        page.setRecords(new ArrayList<>());
+        page.setNextCursor(null);
+        page.setHasMore(false);
+        return page;
+    }
+
+    /**
+     * 游标编码为 URL-safe Base64("lastLikeTime|notificationId")，前端无需感知排序字段。
+     */
+    private String encodeCursor(NotificationRawVO raw) {
+        String value = raw.getLastLikeTime() + CURSOR_SEPARATOR + raw.getNotificationId();
+        return Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * 解码游标；未传游标时返回 null，表示查询第一页。
+     */
+    private LikeCursor decodeCursor(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return null;
+        }
+        try {
+            String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
+            int separatorIndex = decoded.lastIndexOf(CURSOR_SEPARATOR);
+            if (separatorIndex <= 0 || separatorIndex == decoded.length() - 1) {
+                throw new IllegalArgumentException("游标格式不正确");
+            }
+            LocalDateTime lastLikeTime = LocalDateTime.parse(decoded.substring(0, separatorIndex));
+            Integer notificationId = Integer.valueOf(decoded.substring(separatorIndex + 1));
+            return new LikeCursor(lastLikeTime, notificationId);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("非法的分页游标", e);
+        }
+    }
+
+    /**
+     * 点赞通知游标：按 last_like_time + notificationId 复合排序，避免同一时间戳下分页丢失/重复。
+     */
+    private static final class LikeCursor {
+        private final LocalDateTime lastLikeTime;
+        private final Integer notificationId;
+
+        private LikeCursor(LocalDateTime lastLikeTime, Integer notificationId) {
+            this.lastLikeTime = lastLikeTime;
+            this.notificationId = notificationId;
+        }
+
+        private LocalDateTime getLastLikeTime() {
+            return lastLikeTime;
+        }
+
+        private Integer getNotificationId() {
+            return notificationId;
+        }
     }
 
     /**

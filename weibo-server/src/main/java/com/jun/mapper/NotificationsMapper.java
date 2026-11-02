@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.MapKey;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -14,7 +15,10 @@ import java.util.Set;
 @Mapper
 public interface NotificationsMapper {
 
-    List<NotificationRawVO> getLikeNotifications(@Param("receiverId") Long receiverId);
+    List<NotificationRawVO> getLikeNotifications(@Param("receiverId") Long receiverId,
+                                                 @Param("cursorTime") LocalDateTime cursorTime,
+                                                 @Param("cursorId") Integer cursorId,
+                                                 @Param("limit") Integer limit);
 
     @MapKey("id")
     List<Map<String, Object>> getPostContents(@Param("postIds") List<Integer> postIds);

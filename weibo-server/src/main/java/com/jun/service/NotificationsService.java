@@ -3,7 +3,7 @@ package com.jun.service;
 import com.jun.result.Result;
 
 public interface NotificationsService {
-    Result getLikeInfo();
+    Result getLikeInfo(String cursor);
 
     Result getLikeDetail(Integer targetId);
 

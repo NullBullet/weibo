@@ -15,9 +15,9 @@ public class NotificationsController {
     private NotificationsService notificationsService;
 
     @GetMapping("/likes")
-    public Result like() {
-        log.info("获取当前用户的获取当前用户收到的点赞聚合通知列表");
-        return notificationsService.getLikeInfo();
+    public Result like(@RequestParam(required = false) String cursor) {
+        log.info("获取当前用户收到的点赞聚合通知列表, cursor={}", cursor);
+        return notificationsService.getLikeInfo(cursor);
     }
 
     @GetMapping("/likes/{targetId}")
