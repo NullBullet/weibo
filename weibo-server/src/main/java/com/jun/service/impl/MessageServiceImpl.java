@@ -22,6 +22,8 @@ import jakarta.annotation.Resource;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -287,11 +289,31 @@ public class MessageServiceImpl implements MessageService {
         //    与 saveMessage 的条件化 +1 可交换，新消息并发到达时计数不丢失
         messageMapper.decreaseUnreadCount(conversationId, userId, markedCount, latestMsgId);
 
-        // 未读消息数量推送
+        // 4. 事务内读取递减后的未读数：同一事务可见本次更新，
+        //    且避免在 afterCommit 中再次访问事务资源
         Long userUnReadCount = messageService.getUserUnReadCount(userId);
-        chatWebSocketHandler.sendUnreadCount(userId, userUnReadCount);
+
+        // 5. 事务提交后再推送未读数，避免回滚或提交失败时推送未生效的计数
+        runAfterCommit(() -> chatWebSocketHandler.sendUnreadCount(userId, userUnReadCount));
 
         return Result.success();
+    }
+
+    /**
+     * 数据库事务提交后执行未读数推送。若当前没有事务同步（例如非代理调用），
+     * 则直接执行，保持与原逻辑一致的降级行为。
+     */
+    private void runAfterCommit(Runnable action) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            action.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                action.run();
+            }
+        });
     }
 
     /**
