@@ -110,4 +110,13 @@ public class RedisConstants {
     public static final String REWARD_ACTIVITY_STATUS_KEY = "reward:activity:status:";
     //抽奖活动信息：activityId -> Hash {activityType, status, fanOnly, creatorId}
     public static final String REWARD_ACTIVITY_INFO_KEY = "reward:activity:info:";
+
+    //点赞聚合通知分页缓存    notification:like:{receiverId}:{cursorTime}:{cursorId}:{size}
+    public static final String NOTIFICATION_LIKE_CACHE_KEY = "notification:like:";
+    //点赞通知每页固定 20 条
+    public static final int NOTIFICATION_LIKE_PAGE_SIZE = 20;
+    //点赞通知分页缓存 TTL：30 秒，固定过期，不续期
+    public static final Long NOTIFICATION_LIKE_CACHE_TTL = 30L;
+    //点赞通知分页索引 TTL：60 秒，仅用于失效时定位已缓存页，不续期
+    public static final Long NOTIFICATION_LIKE_PAGES_TTL = 60L;
 }

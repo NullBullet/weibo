@@ -3,6 +3,7 @@ package com.jun.consumer;
 import com.jun.config.RabbitMQConfig;
 import com.jun.mapper.NotificationsMapper;
 import com.jun.mq.message.LikeMessage;
+import com.jun.utils.NotificationLikeCacheHelper;
 import com.rabbitmq.client.Channel;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -11,6 +12,7 @@ import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
 import java.util.Objects;
@@ -29,6 +31,10 @@ public class NoticeLikeConsumer {
     private RabbitTemplate rabbitTemplate;
     @Resource
     private RedisTemplate redisTemplate;
+    @Resource
+    private NotificationLikeCacheHelper notificationLikeCacheHelper;
+    @Resource
+    private TransactionTemplate transactionTemplate;
 
     @RabbitListener(
             queues = RabbitMQConfig.NOTICE_POST_LIKE_QUEUE,
@@ -70,13 +76,16 @@ public class NoticeLikeConsumer {
                 return;
             }
 
-            // 4. 点赞/取消 → 更新 notification_like
-            if (Boolean.TRUE.equals(message.getIsLiked())) {
-                notificationsMapper.upsertLikeNotification(receiverId, targetType, targetId);
-            } else {
-                notificationsMapper.decrementLikeNotification(receiverId, targetType, targetId);
-                notificationsMapper.deleteZeroCount(receiverId, targetType, targetId);
-            }
+            // 4. 点赞/取消 → 事务内更新 notification_like，提交后再删除分页缓存
+            transactionTemplate.executeWithoutResult(status -> {
+                if (Boolean.TRUE.equals(message.getIsLiked())) {
+                    notificationsMapper.upsertLikeNotification(receiverId, targetType, targetId);
+                } else {
+                    notificationsMapper.decrementLikeNotification(receiverId, targetType, targetId);
+                    notificationsMapper.deleteZeroCount(receiverId, targetType, targetId);
+                }
+                notificationLikeCacheHelper.evictAfterCommit(receiverId);
+            });
 
             // 幂等标记
             redisTemplate.opsForValue().set(key, "1", 7, TimeUnit.DAYS);

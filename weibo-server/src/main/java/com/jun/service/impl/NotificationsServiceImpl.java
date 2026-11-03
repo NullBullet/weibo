@@ -8,6 +8,7 @@ import com.jun.mapper.RewardActivityMapper;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.service.NotificationsService;
+import com.jun.utils.NotificationLikeCacheHelper;
 import com.jun.vo.*;
 import jakarta.annotation.Resource;
 import org.springframework.data.redis.core.RedisCallback;
@@ -20,16 +21,12 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 import static com.jun.constant.RedisConstants.LIKE_COMMENT_KEY;
+import static com.jun.constant.RedisConstants.NOTIFICATION_LIKE_PAGE_SIZE;
 
 @Service
 public class NotificationsServiceImpl implements NotificationsService {
 
     private static final DateTimeFormatter DTF = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
-    /**
-     * 点赞通知每页固定 20 条
-     */
-    private static final int LIKE_NOTIFICATION_PAGE_SIZE = 20;
 
     /**
      * 游标内部字段分隔符
@@ -42,6 +39,8 @@ public class NotificationsServiceImpl implements NotificationsService {
     private RedisTemplate redisTemplate;
     @Resource
     private RewardActivityMapper rewardActivityMapper;
+    @Resource
+    private NotificationLikeCacheHelper notificationLikeCacheHelper;
 
     @Override
     public Result getLikeInfo(String cursor) {
@@ -53,20 +52,29 @@ public class NotificationsServiceImpl implements NotificationsService {
         } catch (IllegalArgumentException e) {
             return Result.error("非法的分页游标");
         }
+        LocalDateTime cursorTime = likeCursor == null ? null : likeCursor.getLastLikeTime();
+        Integer cursorId = likeCursor == null ? null : likeCursor.getNotificationId();
 
-        // 1. 多查一条，用于判断是否还有下一页
-        List<NotificationRawVO> rawList = notificationsMapper.getLikeNotifications(
-                receiverId,
-                likeCursor == null ? null : likeCursor.getLastLikeTime(),
-                likeCursor == null ? null : likeCursor.getNotificationId(),
-                LIKE_NOTIFICATION_PAGE_SIZE + 1);
-        if (rawList == null || rawList.isEmpty()) {
-            return Result.success(emptyPage());
+        // 1. 先查旁路缓存，命中直接返回（TTL 30 秒固定过期）
+        LikeNotificationPageVO cachedPage = notificationLikeCacheHelper.get(
+                receiverId, cursorTime, cursorId, NOTIFICATION_LIKE_PAGE_SIZE);
+        if (cachedPage != null) {
+            return Result.success(cachedPage);
         }
 
-        boolean hasMore = rawList.size() > LIKE_NOTIFICATION_PAGE_SIZE;
+        // 2. 缓存未命中，多查一条用于判断是否还有下一页
+        List<NotificationRawVO> rawList = notificationsMapper.getLikeNotifications(
+                receiverId, cursorTime, cursorId, NOTIFICATION_LIKE_PAGE_SIZE + 1);
+        if (rawList == null || rawList.isEmpty()) {
+            LikeNotificationPageVO page = emptyPage();
+            notificationLikeCacheHelper.put(
+                    receiverId, cursorTime, cursorId, NOTIFICATION_LIKE_PAGE_SIZE, page);
+            return Result.success(page);
+        }
+
+        boolean hasMore = rawList.size() > NOTIFICATION_LIKE_PAGE_SIZE;
         List<NotificationRawVO> pageRows = hasMore
-                ? rawList.subList(0, LIKE_NOTIFICATION_PAGE_SIZE)
+                ? rawList.subList(0, NOTIFICATION_LIKE_PAGE_SIZE)
                 : rawList;
 
         // 游标取本页最后一条原始记录：即使该通知内容已删除也要推进游标，避免下一页重复/卡住
@@ -150,6 +158,8 @@ public class NotificationsServiceImpl implements NotificationsService {
         page.setRecords(voList);
         page.setNextCursor(nextCursor);
         page.setHasMore(hasMore);
+        notificationLikeCacheHelper.put(
+                receiverId, cursorTime, cursorId, NOTIFICATION_LIKE_PAGE_SIZE, page);
         return Result.success(page);
     }
 
