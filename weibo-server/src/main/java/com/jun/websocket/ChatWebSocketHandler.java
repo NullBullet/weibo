@@ -7,37 +7,36 @@ import com.jun.dto.ChatMessageDTO;
 import com.jun.service.MessageService;
 import com.jun.vo.ChatMessageVO;
 import com.jun.vo.MessageSaveResult;
-import com.jun.vo.NotifyUnreadCountVO;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
-import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator;
-import org.springframework.web.socket.handler.SessionLimitExceededException;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 
+/**
+ * WebSocket 协议处理：连接建立/关闭、PING/PONG 心跳、CHAT 消息校验与落库、
+ * ACK 及未读数推送编排。在线连接的管理与消息发送统一委托给
+ * {@link WebSocketSessionManager}。
+ */
 @Slf4j
 @Component
 public class ChatWebSocketHandler extends TextWebSocketHandler {
 
-    // userId -> 该用户的活跃连接列表（支持同一用户多标签页同时在线，推送广播到全部连接）
-    private final Map<Long, List<WebSocketSession>> safeOnlineUsers = new ConcurrentHashMap<>();
     @Resource
     private ObjectMapper objectMapper;
     @Resource
     private MessageService messageService;
+    @Resource
+    private WebSocketSessionManager sessionManager;
     /**
      * CHAT 消息发送频率限制：每秒补充令牌数，<=0 表示关闭限流
      */
@@ -50,43 +49,25 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     @Value("${jun.websocket.chat-rate-limit.burst:20}")
     private int chatRateBurst;
 
-    /**
-     * 连接空闲超时（秒）：超过该时间未收到任何消息（含 PING）的连接将被服务端关闭
-     */
-    @Value("${jun.websocket.idle-timeout-seconds:300}")
-    private int idleTimeoutSeconds;
-
     // 客户端连接成功时执行
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
         Long userId = (Long) session.getAttributes().get("userId");
 
-        // 保存用户和 WebSocket 连接的对应关系
-        // 处理 WebSocket 会话在多线程环境下的并发安全问题
-        WebSocketSession safeSession =
-                new ConcurrentWebSocketSessionDecorator(
-                        session, 10_000, 512 * 1024
-                );
+        // 保存用户和 WebSocket 连接的对应关系（内部包装并发安全会话）
+        WebSocketSession safeSession = sessionManager.registerSession(userId, session);
 
-        // 把包装器引用存入会话属性：当前请求的响应始终路由回发起它的连接，
-        // 不受连接映射后续变化的影响，同时复用装饰器的并发发送保护
-        session.getAttributes().put("safeSession", safeSession);
-
-        // 连接活跃时间初值与 CHAT 频率限流器（连接级）
-        session.getAttributes().put("lastActivity", System.currentTimeMillis());
+        // CHAT 频率限流器（连接级）
         if (chatRateLimit > 0) {
             session.getAttributes().put("chatRateLimiter", new ChatRateLimiter(chatRateLimit, chatRateBurst));
         }
-
-        safeOnlineUsers.computeIfAbsent(userId, k -> new CopyOnWriteArrayList<>())
-                .add(safeSession);
 
         log.info("用户 {} WebSocket连接成功", userId);
         log.info("sessionId = {}", safeSession.getId());
 
         // 未读消息数量推送
         Long userUnReadCount = messageService.getUserUnReadCount(userId);
-        sendUnreadCount(safeSession, userUnReadCount);
+        sessionManager.sendUnreadCount(safeSession, userUnReadCount);
     }
 
     // 客户端发送文本消息时执行
@@ -100,7 +81,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         Long tokenExp = (Long) session.getAttributes().get("tokenExp");
         if (tokenExp != null && System.currentTimeMillis() > tokenExp) {
             log.warn("WebSocket token 已过期，关闭连接，userId = {}", senderId);
-            sendMessageQuietly(session, new TextMessage("{\"type\":\"ERROR\",\"message\":\"登录已过期\"}"), "ERROR");
+            sessionManager.sendMessageQuietly(session, new TextMessage("{\"type\":\"ERROR\",\"message\":\"登录已过期\"}"), "ERROR");
             try {
                 session.close(CloseStatus.GOING_AWAY);
             } catch (IOException e) {
@@ -110,12 +91,12 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         }
 
         // 刷新连接活跃时间（含 PING），供空闲扫描清理半开连接
-        session.getAttributes().put("lastActivity", System.currentTimeMillis());
+        sessionManager.touch(session);
 
         // 响应路由：使用发起当前请求的连接自己的包装器（PONG/ERROR/ACK 只回到该连接），
         // 不从映射中按 userId 查找，避免同用户多连接时响应发到别的连接；
         // 装饰器在连接建立时已存入会话属性，发送仍受并发保护
-        WebSocketSession senderSession = (WebSocketSession) session.getAttributes().get("safeSession");
+        WebSocketSession senderSession = sessionManager.getSafeSession(session);
 
         // 2. 解析消息
         ChatMessageDTO chatMessage;
@@ -150,7 +131,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
         // 业务层心跳机制
         if ("PING".equals(chatMessage.getType())) {
-            sendMessageQuietly(senderSession, new TextMessage("{\"type\":\"PONG\"}"), "PONG");
+            sessionManager.sendMessageQuietly(senderSession, new TextMessage("{\"type\":\"PONG\"}"), "PONG");
             return;
         }
 
@@ -202,7 +183,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         ack.setClientMessageId(chatMessage.getClientMessageId());
         ack.setMessageId(messageVO.getMessageId());
         String ackJson = JSONUtil.toJsonStr(ack);
-        sendMessageQuietly(senderSession, new TextMessage(ackJson), "MESSAGE_ACK");
+        sessionManager.sendMessageQuietly(senderSession, new TextMessage(ackJson), "MESSAGE_ACK");
 
         // 幂等重放：消息此前已保存并推送过，不得再次向接收者推送 NEW_MESSAGE 和未读数
         if (saveResult.isReplay()) {
@@ -212,11 +193,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         }
 
         // 4. 推送给接收者的所有在线连接（多标签页同时在线时每个连接都能收到）
-        List<WebSocketSession> targetSessions =
-                safeOnlineUsers.get(messageVO.getReceiverId());
+        List<WebSocketSession> targetSessions = sessionManager.getSessions(messageVO.getReceiverId());
 
         // 5. 接收者在线
-        if (targetSessions != null && !targetSessions.isEmpty()) {
+        if (!targetSessions.isEmpty()) {
 
             // 6. 把完整消息对象转换成 JSON
             String json = objectMapper.writeValueAsString(messageVO);
@@ -225,13 +205,13 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             //    和已增加的未读数，也不应中断发送者的处理流程
             for (WebSocketSession targetSession : targetSessions) {
                 if (targetSession.isOpen()) {
-                    sendMessageQuietly(targetSession, new TextMessage(json), "NEW_MESSAGE");
+                    sessionManager.sendMessageQuietly(targetSession, new TextMessage(json), "NEW_MESSAGE");
                 }
             }
 
             // 未读消息数量推送
             Long userUnReadCount = messageService.getUserUnReadCount(messageVO.getReceiverId());
-            sendUnreadCount(targetSessions, userUnReadCount);
+            sessionManager.sendUnreadCount(targetSessions, userUnReadCount);
 
             // 日志脱敏：不输出私信正文，仅保留 ID 与内容长度用于排查
             log.info(
@@ -258,75 +238,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         Long userId = (Long) session.getAttributes().get("userId");
 
-        // 只移除当前关闭的这个连接（按 sessionId 精确匹配），
-        // 同一用户的其他连接（如另一个标签页）不受影响
-        List<WebSocketSession> sessions = safeOnlineUsers.get(userId);
-        if (sessions != null) {
-            sessions.removeIf(s -> s.getId().equals(session.getId()));
-            if (sessions.isEmpty()) {
-                safeOnlineUsers.remove(userId, sessions);
-            }
-        }
+        // 只移除当前关闭的这个连接，同一用户的其他连接（如另一个标签页）不受影响
+        sessionManager.removeSession(session);
 
         log.info("WebSocket连接关闭，用户：{}，sessionId = {}", userId, session.getId());
-    }
-
-    // 根据 userId 查找 Session，适用于 HTTP 请求等场景
-    public void sendUnreadCount(Long userId, Long count) {
-        List<WebSocketSession> sessions = safeOnlineUsers.get(userId);
-        if (sessions != null) {
-            sendUnreadCount(sessions, count);
-        }
-    }
-
-    // 向指定 Session 列表发送，适用于已经获取 targetSessions 的场景
-    public void sendUnreadCount(List<WebSocketSession> sessions, Long count) {
-        for (WebSocketSession session : sessions) {
-            sendUnreadCount(session, count);
-        }
-    }
-
-    // 向指定 Session 发送，适用于已经获取 targetSession 的场景
-    public void sendUnreadCount(WebSocketSession session, Long count) {
-        if (session == null || !session.isOpen()) {
-            return;
-        }
-
-        NotifyUnreadCountVO unreadCount = NotifyUnreadCountVO.builder()
-                .count(count)
-                .type("UNREAD_COUNT")
-                .build();
-
-        String json = JSONUtil.toJsonStr(unreadCount);
-
-        sendMessageQuietly(session, new TextMessage(json), "UNREAD_COUNT");
-    }
-
-    /**
-     * 向指定用户的所有在线连接推送业务通知（多标签页同时在线时每个连接都收到），
-     * 适用于 MQ 消费者等无 WebSocket 上下文的场景（如转发落库结果、抽奖参与结果）。
-     * 负载由调用方构造，type 字段标识消息类型；用户不在线时静默跳过，
-     * 序列化或发送失败仅记录日志，不向调用方抛出，保证推送失败不影响消费与 ACK 流程。
-     */
-    public void sendNotification(Long userId, Object payload, String scene) {
-        List<WebSocketSession> sessions = safeOnlineUsers.get(userId);
-        if (sessions == null || sessions.isEmpty()) {
-            return;
-        }
-
-        String json;
-        try {
-            json = objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException e) {
-            log.warn("构造 WebSocket 推送负载失败，scene = {}，userId = {}", scene, userId, e);
-            return;
-        }
-
-        for (WebSocketSession session : sessions) {
-            if (session.isOpen()) {
-                sendMessageQuietly(session, new TextMessage(json), scene);
-            }
-        }
     }
 
     // 修改：统一构造 ERROR 响应；clientMessageId 非空时携带，供前端精确匹配失败的发送消息；
@@ -340,76 +255,10 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 error.put("clientMessageId", clientMessageId);
             }
             error.put("message", message);
-            sendMessageQuietly(session, new TextMessage(objectMapper.writeValueAsString(error)), "ERROR");
+            sessionManager.sendMessageQuietly(session, new TextMessage(objectMapper.writeValueAsString(error)), "ERROR");
         } catch (JsonProcessingException e) {
             log.warn("构造 ERROR 响应失败", e);
         }
-    }
-
-    /**
-     * 统一发送入口：捕获并记录发送异常，不向上抛出，避免单次发送失败
-     * 中断消息处理流程或误关发送者连接（异常原先会抛给 ExceptionWebSocketHandlerDecorator 关闭会话）。
-     * 仅对 ConcurrentWebSocketSessionDecorator 判定"不可靠"的会话（发送超时/缓冲超限）按官方语义主动关闭，
-     * 交由 afterConnectionClosed 清理映射，防止慢客户端每条消息都阻塞到发送超时。
-     *
-     * @return 是否发送成功（会话不可用或发送失败均返回 false）
-     */
-    private boolean sendMessageQuietly(WebSocketSession session, TextMessage message, String scene) {
-        if (session == null || !session.isOpen()) {
-            log.warn("WebSocket 发送跳过（会话不可用），scene = {}，sessionId = {}",
-                    scene, session == null ? "null" : session.getId());
-            return false;
-        }
-
-        try {
-            session.sendMessage(message);
-            return true;
-        } catch (SessionLimitExceededException e) {
-            // 发送超时（10s）或缓冲超限（512KB）：会话已不可靠，主动关闭，避免无限占用
-            log.warn("WebSocket 会话不可靠，关闭连接，scene = {}，sessionId = {}，reason = {}",
-                    scene, session.getId(), e.getMessage());
-            try {
-                session.close(e.getStatus());
-            } catch (IOException closeEx) {
-                log.warn("关闭不可靠会话失败，sessionId = {}", session.getId());
-            }
-            return false;
-        } catch (IOException e) {
-            // 底层连接已断或网络异常：记录后放弃，连接清理交给容器回调
-            log.warn("WebSocket 发送失败，scene = {}，sessionId = {}，error = {}",
-                    scene, session.getId(), e.getMessage());
-            return false;
-        } catch (RuntimeException e) {
-            // 会话正在关闭/已关闭（IllegalStateException）等其他运行时异常，同样仅记录
-            log.warn("WebSocket 发送失败，scene = {}，sessionId = {}，error = {}",
-                    scene, session.getId(), e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * 空闲连接扫描：清理半开连接（客户端异常断网后服务端收不到关闭帧）。
-     * 活跃时间由 handleTextMessage 每次收到消息（含 PING）时刷新，
-     * 正常客户端心跳间隔必须小于 jun.websocket.idle-timeout-seconds。
-     */
-    @Scheduled(fixedDelay = 60_000)
-    public void sweepIdleSessions() {
-        long now = System.currentTimeMillis();
-        safeOnlineUsers.forEach((userId, sessions) -> {
-            for (WebSocketSession session : sessions) {
-                Long lastActivity = (Long) session.getAttributes().get("lastActivity");
-                if (lastActivity != null
-                        && now - lastActivity > idleTimeoutSeconds * 1000L) {
-                    log.warn("WebSocket 空闲超时，关闭连接，userId = {}，sessionId = {}",
-                            userId, session.getId());
-                    try {
-                        session.close(CloseStatus.GOING_AWAY);
-                    } catch (IOException e) {
-                        log.warn("关闭空闲连接失败，sessionId = {}", session.getId());
-                    }
-                }
-            }
-        });
     }
 
     /**
@@ -441,4 +290,3 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         }
     }
 }
-

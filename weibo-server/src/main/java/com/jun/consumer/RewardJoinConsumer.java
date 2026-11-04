@@ -6,7 +6,7 @@ import com.jun.mapper.RewardActivityMapper;
 import com.jun.mapper.RewardRecordMapper;
 import com.jun.mq.message.RewardJoinMessage;
 import com.jun.vo.RewardResultVO;
-import com.jun.websocket.ChatWebSocketHandler;
+import com.jun.websocket.WebSocketSessionManager;
 import com.rabbitmq.client.Channel;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -36,7 +36,7 @@ public class RewardJoinConsumer {
     @Resource
     private RedisTemplate redisTemplate;
     @Resource
-    private ChatWebSocketHandler chatWebSocketHandler;
+    private WebSocketSessionManager sessionManager;
 
     @RabbitListener(
             queues = RabbitMQConfig.REWARD_JOIN_QUEUE,
@@ -137,7 +137,7 @@ public class RewardJoinConsumer {
      */
     private void notifyRewardResult(RewardJoinMessage message, boolean joined, String reason) {
         try {
-            chatWebSocketHandler.sendNotification(
+            sessionManager.sendNotification(
                     message.getUserId(),
                     RewardResultVO.builder()
                             .type(RewardResultVO.TYPE)

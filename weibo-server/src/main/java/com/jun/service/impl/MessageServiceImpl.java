@@ -17,7 +17,7 @@ import com.jun.mapper.UsersMapper;
 import com.jun.result.Result;
 import com.jun.service.MessageService;
 import com.jun.vo.*;
-import com.jun.websocket.ChatWebSocketHandler;
+import com.jun.websocket.WebSocketSessionManager;
 import jakarta.annotation.Resource;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -47,7 +47,7 @@ public class MessageServiceImpl implements MessageService {
     @Resource
     private MessageService messageService;
     @Resource
-    private ChatWebSocketHandler chatWebSocketHandler;
+    private WebSocketSessionManager sessionManager;
 
     @Override
     public Result getOrCreatConversation(Long targetUserId) {
@@ -294,7 +294,7 @@ public class MessageServiceImpl implements MessageService {
         Long userUnReadCount = messageService.getUserUnReadCount(userId);
 
         // 5. 事务提交后再推送未读数，避免回滚或提交失败时推送未生效的计数
-        runAfterCommit(() -> chatWebSocketHandler.sendUnreadCount(userId, userUnReadCount));
+        runAfterCommit(() -> sessionManager.sendUnreadCount(userId, userUnReadCount));
 
         return Result.success();
     }

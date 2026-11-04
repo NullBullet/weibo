@@ -9,7 +9,7 @@ import com.jun.utils.HotScoreCalculator;
 import com.jun.utils.PostStatsHelper;
 import com.jun.utils.UserPostIdsHelper;
 import com.jun.vo.RepostResultVO;
-import com.jun.websocket.ChatWebSocketHandler;
+import com.jun.websocket.WebSocketSessionManager;
 import com.rabbitmq.client.Channel;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -46,7 +46,7 @@ public class RepostConsumer {
     @Resource
     private PostStatsHelper postStatsHelper;
     @Resource
-    private ChatWebSocketHandler chatWebSocketHandler;
+    private WebSocketSessionManager sessionManager;
 
     /**
      * 统计字段安全解析：缺失或脏数据返回 0，不抛异常
@@ -132,7 +132,7 @@ public class RepostConsumer {
      */
     private void notifyRepostResult(RepostMessage message, boolean success, Long forwardStatusId) {
         try {
-            chatWebSocketHandler.sendNotification(
+            sessionManager.sendNotification(
                     message.getUserId(),
                     RepostResultVO.builder()
                             .type(RepostResultVO.TYPE)
