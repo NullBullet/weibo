@@ -14,12 +14,12 @@ import java.io.IOException;
 @Slf4j
 public class NoticeLikeDeadLetterConsumer {
 
-    @RabbitListener(queues = RabbitMQConfig.NOTICE_POST_LIKE_DLQ)
+    @RabbitListener(queues = RabbitMQConfig.NOTICE_LIKE_DLQ)
     public void handleDeadLetter(LikeMessage message, Channel channel, Message msg) throws IOException {
 
         long deliveryTag = msg.getMessageProperties().getDeliveryTag();
 
-        log.error("收到帖子点赞通知死信消息：{}", message);
+        log.error("收到点赞通知死信消息：{}", message);
 
         // todo: 保存DB记录 / 发送告警
 

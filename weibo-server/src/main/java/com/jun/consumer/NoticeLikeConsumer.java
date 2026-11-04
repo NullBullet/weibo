@@ -18,7 +18,7 @@ import java.io.IOException;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
-import static com.jun.config.RabbitMQConfig.NOTICE_POST_LIKE_MAX_RETRY_COUNT;
+import static com.jun.config.RabbitMQConfig.NOTICE_LIKE_MAX_RETRY_COUNT;
 import static com.jun.constant.RedisConstants.MQ_IDEMPOTENT_KEY;
 
 @Component
@@ -37,14 +37,14 @@ public class NoticeLikeConsumer {
     private TransactionTemplate transactionTemplate;
 
     @RabbitListener(
-            queues = RabbitMQConfig.NOTICE_POST_LIKE_QUEUE,
+            queues = RabbitMQConfig.NOTICE_LIKE_QUEUE,
             containerFactory = "noticeFactory")
     public void handleLikeNotice(LikeMessage message, Channel channel, Message msg) throws IOException {
 
         long deliveryTag = msg.getMessageProperties().getDeliveryTag();
 
         // 幂等检查
-        String key = MQ_IDEMPOTENT_KEY + RabbitMQConfig.NOTICE_POST_LIKE_QUEUE + ":" + message.getMessageId();
+        String key = MQ_IDEMPOTENT_KEY + RabbitMQConfig.NOTICE_LIKE_QUEUE + ":" + message.getMessageId();
         Boolean exists = redisTemplate.hasKey(key);
         if (Boolean.TRUE.equals(exists)) {
             log.info("点赞通知消息已处理，直接ACK: {}", message.getMessageId());
@@ -55,7 +55,7 @@ public class NoticeLikeConsumer {
         try {
             Long senderId = message.getUserId();
             Integer targetType = message.getTargetType() != null ? message.getTargetType().getCode() : 1;
-            Long targetId = message.getStatusId();
+            Long targetId = message.getTargetId();
 
             // 1. 获取目标作者（接收通知的人）
             Long receiverId = notificationsMapper.getOwnerByTargetId(targetType, targetId);
@@ -91,8 +91,8 @@ public class NoticeLikeConsumer {
             redisTemplate.opsForValue().set(key, "1", 7, TimeUnit.DAYS);
 
             channel.basicAck(deliveryTag, false);
-            log.info("点赞通知消费成功: userId={}, statusId={}",
-                    message.getUserId(), message.getStatusId());
+            log.info("点赞通知消费成功: userId={}, targetType={}, targetId={}",
+                    message.getUserId(), targetType, targetId);
 
         } catch (Exception e) {
             Integer retryCount = message.getRetryCount();
@@ -102,14 +102,14 @@ public class NoticeLikeConsumer {
 
             log.error("点赞通知消费失败，第{}次重试", retryCount + 1, e);
 
-            if (retryCount >= NOTICE_POST_LIKE_MAX_RETRY_COUNT) {
+            if (retryCount >= NOTICE_LIKE_MAX_RETRY_COUNT) {
                 log.error("点赞通知达到最大重试次数，进入死信队列");
                 channel.basicNack(deliveryTag, false, false);
                 return;
             } else {
                 message.setRetryCount(retryCount + 1);
                 rabbitTemplate.convertAndSend(
-                        RabbitMQConfig.NOTICE_POST_LIKE_RETRY_QUEUE,
+                        RabbitMQConfig.NOTICE_LIKE_RETRY_QUEUE,
                         message
                 );
             }

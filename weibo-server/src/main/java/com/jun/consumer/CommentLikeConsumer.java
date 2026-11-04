@@ -4,7 +4,7 @@ import com.jun.config.RabbitMQConfig;
 import com.jun.dto.ToggleLikeDTO;
 import com.jun.enumeration.TargetType;
 import com.jun.mapper.PostMapper;
-import com.jun.mq.message.CommentLikeMessage;
+import com.jun.mq.message.LikeMessage;
 import com.rabbitmq.client.Channel;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -34,7 +34,7 @@ public class CommentLikeConsumer {
     @RabbitListener(
             queues = RabbitMQConfig.COMMENT_LIKE_QUEUE,
             containerFactory = "commentLikeFactory")
-    public void handleCommentLike(CommentLikeMessage message, Channel channel, Message msg) throws IOException {
+    public void handleCommentLike(LikeMessage message, Channel channel, Message msg) throws IOException {
 
         long deliveryTag = msg.getMessageProperties().getDeliveryTag();
 
@@ -50,15 +50,15 @@ public class CommentLikeConsumer {
         try {
             ToggleLikeDTO dto = new ToggleLikeDTO();
             dto.setUserId(message.getUserId());
-            dto.setTargetId(message.getCommentId());
+            dto.setTargetId(message.getTargetId());
             dto.setTargetType(TargetType.COMMENT);
 
             if (Boolean.TRUE.equals(message.getIsLiked())) {
                 postMapper.saveLikeInfo(dto);
-                postMapper.updateCommentLikeCount(1, message.getCommentId());
+                postMapper.updateCommentLikeCount(1, message.getTargetId());
             } else {
                 postMapper.deleteLikeInfo(dto);
-                postMapper.updateCommentLikeCount(-1, message.getCommentId());
+                postMapper.updateCommentLikeCount(-1, message.getTargetId());
             }
 
             // 幂等标记（7天）
@@ -67,7 +67,7 @@ public class CommentLikeConsumer {
             // 手动ACK
             channel.basicAck(deliveryTag, false);
             log.info("评论点赞消息消费成功: commentId={}, isLiked={}",
-                    message.getCommentId(), message.getIsLiked());
+                    message.getTargetId(), message.getIsLiked());
 
         } catch (Exception e) {
             Integer retryCount = message.getRetryCount();

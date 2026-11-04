@@ -48,15 +48,15 @@ public class PostLikeConsumer {
         try {
             ToggleLikeDTO dto = new ToggleLikeDTO();
             dto.setUserId(message.getUserId());
-            dto.setTargetId(message.getStatusId());
+            dto.setTargetId(message.getTargetId());
             dto.setTargetType(message.getTargetType());
             if (Boolean.TRUE.equals(message.getIsLiked())) {
                 postMapper.saveLikeInfo(dto);
-                postMapper.updateStatusLikeCount(1, message.getStatusId());
+                postMapper.updateStatusLikeCount(1, message.getTargetId());
                 redisTemplate.opsForValue().set(key, "1", 7, TimeUnit.DAYS);
             } else {
                 postMapper.deleteLikeInfo(dto);
-                postMapper.updateStatusLikeCount(-1, message.getStatusId());
+                postMapper.updateStatusLikeCount(-1, message.getTargetId());
                 redisTemplate.opsForValue().set(key, "1", 7, TimeUnit.DAYS);
             }
 

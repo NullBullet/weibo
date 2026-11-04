@@ -43,7 +43,7 @@ public class RabbitListenerConfig {
         factory.setMessageConverter(jsonMessageConverter);
         factory.setAcknowledgeMode(AcknowledgeMode.MANUAL);
 
-        // 帖子点赞通知写入量中低，配置较少消费者
+        // 点赞通知写入量中低，配置较少消费者
         factory.setConcurrentConsumers(1);
         factory.setMaxConcurrentConsumers(3);
         factory.setPrefetchCount(1);

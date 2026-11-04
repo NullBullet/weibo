@@ -1,5 +1,6 @@
 package com.jun.mq.message;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.jun.enumeration.TargetType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -18,9 +19,10 @@ public class LikeMessage {
     private Long userId;
 
     /**
-     * 帖子ID
+     * 点赞目标ID：帖子ID 或 评论ID
      */
-    private Long statusId;
+    @JsonAlias({"statusId", "commentId"})
+    private Long targetId;
 
     /**
      * 是否点赞

@@ -11,8 +11,8 @@ import com.jun.entity.Comment;
 import com.jun.enumeration.TargetType;
 import com.jun.mapper.CommentsMapper;
 import com.jun.mapper.PostMapper;
-import com.jun.mq.message.CommentLikeMessage;
 import com.jun.mq.message.CommentMessage;
+import com.jun.mq.message.LikeMessage;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.service.CommentsService;
@@ -96,11 +96,12 @@ public class CommentsServiceImpl implements CommentsService {
                 // 点赞写入成功，续期点赞集合 TTL
                 likeSetHelper.refreshTtl(toggleLikeDTO.getTargetType(), commentId);
 
-                // MQ 异步入库：保存点赞记录 + 更新评论点赞数
-                CommentLikeMessage message = CommentLikeMessage.builder()
+                // MQ 异步落库 + 通知：comment.like.queue 与 notice.like.queue 共同消费
+                LikeMessage message = LikeMessage.builder()
                         .messageId(UUID.randomUUID().toString())
                         .userId(userId)
-                        .commentId(commentId)
+                        .targetId(commentId)
+                        .targetType(TargetType.COMMENT)
                         .isLiked(true)
                         .retryCount(0)
                         .build();
@@ -141,11 +142,12 @@ public class CommentsServiceImpl implements CommentsService {
                 // 取消点赞写入成功，续期点赞集合 TTL
                 likeSetHelper.refreshTtl(toggleLikeDTO.getTargetType(), commentId);
 
-                // MQ 异步入库：删除点赞记录 + 更新评论点赞数
-                CommentLikeMessage message = CommentLikeMessage.builder()
+                // MQ 异步落库 + 通知：comment.like.queue 与 notice.like.queue 共同消费
+                LikeMessage message = LikeMessage.builder()
                         .messageId(UUID.randomUUID().toString())
                         .userId(userId)
-                        .commentId(commentId)
+                        .targetId(commentId)
+                        .targetType(TargetType.COMMENT)
                         .isLiked(false)
                         .retryCount(0)
                         .build();

@@ -1,7 +1,7 @@
 package com.jun.consumer;
 
 import com.jun.config.RabbitMQConfig;
-import com.jun.mq.message.CommentLikeMessage;
+import com.jun.mq.message.LikeMessage;
 import com.rabbitmq.client.Channel;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.Message;
@@ -15,7 +15,7 @@ import java.io.IOException;
 public class CommentLikeDeadLetterConsumer {
 
     @RabbitListener(queues = RabbitMQConfig.COMMENT_LIKE_DLQ)
-    public void handleDeadLetter(CommentLikeMessage message, Channel channel, Message msg) throws IOException {
+    public void handleDeadLetter(LikeMessage message, Channel channel, Message msg) throws IOException {
 
         long deliveryTag = msg.getMessageProperties().getDeliveryTag();
 

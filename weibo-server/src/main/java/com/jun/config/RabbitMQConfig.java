@@ -32,14 +32,14 @@ public class RabbitMQConfig {
     //取消点赞
     public static final String POST_CANCEL = "post.cancel";
 
-    // ======================== 帖子点赞通知队列 ========================
+    // ======================== 点赞通知队列（帖子 + 评论） ========================
 
-    public static final String NOTICE_POST_LIKE_QUEUE = "notice.post.like.queue";
-    public static final String NOTICE_POST_LIKE_DLQ = "notice.post.like.dlq";
-    public static final String NOTICE_POST_LIKE_DLX = "notice.post.like.dlx";
-    public static final String NOTICE_POST_LIKE_DLQ_ROUTING_KEY = "notice.post.like.dlq";
-    public static final String NOTICE_POST_LIKE_RETRY_QUEUE = "notice.post.like.retry.queue";
-    public static final Integer NOTICE_POST_LIKE_MAX_RETRY_COUNT = 3;
+    public static final String NOTICE_LIKE_QUEUE = "notice.like.queue";
+    public static final String NOTICE_LIKE_DLQ = "notice.like.dlq";
+    public static final String NOTICE_LIKE_DLX = "notice.like.dlx";
+    public static final String NOTICE_LIKE_DLQ_ROUTING_KEY = "notice.like.dlq";
+    public static final String NOTICE_LIKE_RETRY_QUEUE = "notice.like.retry.queue";
+    public static final Integer NOTICE_LIKE_MAX_RETRY_COUNT = 3;
 
     // ======================== 评论通知队列 ========================
 
@@ -77,6 +77,8 @@ public class RabbitMQConfig {
     //评论点赞行为
     public static final String COMMENT_LIKE = "comment.like.execute";
     public static final String COMMENT_LIKE_CANCEL = "comment.like.cancel";
+    //评论点赞路由模式：同时匹配 COMMENT_LIKE 与 COMMENT_LIKE_CANCEL
+    public static final String COMMENT_LIKE_ROUTING_PATTERN = "comment.like.*";
 
     // ======================== Feed推送队列 ========================
 
@@ -243,50 +245,50 @@ public class RabbitMQConfig {
                 .with("post.cancel");
     }
 
-    // ======================== 帖子点赞通知队列 Bean ========================
+    // ======================== 点赞通知队列 Bean（帖子 + 评论） ========================
 
     @Bean
-    public Queue noticePostLikeQueue() {
+    public Queue noticeLikeQueue() {
         Map<String, Object> args = new HashMap<>();
-        args.put("x-dead-letter-exchange", NOTICE_POST_LIKE_DLX);
-        args.put("x-dead-letter-routing-key", NOTICE_POST_LIKE_DLQ_ROUTING_KEY);
-        return new Queue(NOTICE_POST_LIKE_QUEUE, true, false, false, args);
+        args.put("x-dead-letter-exchange", NOTICE_LIKE_DLX);
+        args.put("x-dead-letter-routing-key", NOTICE_LIKE_DLQ_ROUTING_KEY);
+        return new Queue(NOTICE_LIKE_QUEUE, true, false, false, args);
     }
 
     @Bean
-    public DirectExchange noticePostLikeDeadLetterExchange() {
-        return new DirectExchange(NOTICE_POST_LIKE_DLX);
+    public DirectExchange noticeLikeDeadLetterExchange() {
+        return new DirectExchange(NOTICE_LIKE_DLX);
     }
 
     @Bean
-    public Queue noticePostLikeDeadLetterQueue() {
-        return new Queue(NOTICE_POST_LIKE_DLQ, true);
+    public Queue noticeLikeDeadLetterQueue() {
+        return new Queue(NOTICE_LIKE_DLQ, true);
     }
 
     @Bean
-    public Binding noticePostLikeDeadLetterBinding() {
+    public Binding noticeLikeDeadLetterBinding() {
         return BindingBuilder
-                .bind(noticePostLikeDeadLetterQueue())
-                .to(noticePostLikeDeadLetterExchange())
-                .with(NOTICE_POST_LIKE_DLQ_ROUTING_KEY);
+                .bind(noticeLikeDeadLetterQueue())
+                .to(noticeLikeDeadLetterExchange())
+                .with(NOTICE_LIKE_DLQ_ROUTING_KEY);
     }
 
     @Bean
-    public Queue noticePostLikeRetryQueue() {
+    public Queue noticeLikeRetryQueue() {
         Map<String, Object> args = new HashMap<>();
         args.put("x-message-ttl", 5000);
         args.put("x-dead-letter-exchange", "");
-        args.put("x-dead-letter-routing-key", NOTICE_POST_LIKE_QUEUE);
-        return new Queue(NOTICE_POST_LIKE_RETRY_QUEUE, true, false, false, args);
+        args.put("x-dead-letter-routing-key", NOTICE_LIKE_QUEUE);
+        return new Queue(NOTICE_LIKE_RETRY_QUEUE, true, false, false, args);
     }
 
     /**
-     * 监听帖子点赞/取消 → 帖子点赞通知（与 like.queue 形成多消费者）
+     * 监听帖子点赞/取消 → 点赞聚合通知（与 like.queue 形成多消费者）
      */
     @Bean
     public Binding noticePostLikeBinding() {
         return BindingBuilder
-                .bind(noticePostLikeQueue())
+                .bind(noticeLikeQueue())
                 .to(weiboTopicExchange())
                 .with("post.like");
     }
@@ -294,9 +296,20 @@ public class RabbitMQConfig {
     @Bean
     public Binding noticePostCancelBinding() {
         return BindingBuilder
-                .bind(noticePostLikeQueue())
+                .bind(noticeLikeQueue())
                 .to(weiboTopicExchange())
                 .with("post.cancel");
+    }
+
+    /**
+     * 监听评论点赞/取消 → 点赞聚合通知（与 comment.like.queue 形成多消费者）
+     */
+    @Bean
+    public Binding noticeCommentLikeBinding() {
+        return BindingBuilder
+                .bind(noticeLikeQueue())
+                .to(weiboTopicExchange())
+                .with(COMMENT_LIKE_ROUTING_PATTERN);
     }
 
     // ======================== 评论通知队列 Bean ========================
@@ -440,7 +453,7 @@ public class RabbitMQConfig {
         return BindingBuilder
                 .bind(commentLikeQueue())
                 .to(weiboTopicExchange())
-                .with("comment.like.*");
+                .with(COMMENT_LIKE_ROUTING_PATTERN);
     }
 
     // ======================== Feed推送队列 Bean ========================
