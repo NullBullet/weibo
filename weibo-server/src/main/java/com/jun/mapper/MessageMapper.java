@@ -44,6 +44,10 @@ public interface MessageMapper {
                              @Param("lastMessageId") Long lastMessageId);
 
     List<Long> getUserUnReadCount(Long userId);
+
+    @Select("select coalesce(sum(unread_count), 0) from conversation_user where user_id = #{userId}")
+    Long countUnreadMessages(@Param("userId") Long userId);
+
     // ==================== PrivateMessage ====================
 
     void insertMessage(PrivateMessage message);

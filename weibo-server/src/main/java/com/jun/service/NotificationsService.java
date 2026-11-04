@@ -16,6 +16,16 @@ public interface NotificationsService {
      */
     Result getUnreadCount();
 
+    /**
+     * 指定用户的总未读数：私信 + 评论通知 + 点赞通知 + 系统通知。
+     */
+    Long getTotalUnreadCount(Long userId);
+
+    /**
+     * 查询并推送指定用户的总未读数；推送失败仅记录日志，不影响调用方业务流程。
+     */
+    void pushTotalUnreadCount(Long userId);
+
     Result markAllCommentNotificationsRead();
 
     Result markAllLikeNotificationsRead();

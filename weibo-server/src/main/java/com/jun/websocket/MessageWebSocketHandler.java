@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jun.dto.ChatMessageDTO;
 import com.jun.service.MessageService;
+import com.jun.service.NotificationsService;
 import com.jun.vo.ChatMessageVO;
 import com.jun.vo.MessageSaveResult;
 import jakarta.annotation.Resource;
@@ -28,12 +29,14 @@ import java.util.Map;
  */
 @Slf4j
 @Component
-public class ChatWebSocketHandler extends TextWebSocketHandler {
+public class MessageWebSocketHandler extends TextWebSocketHandler {
 
     @Resource
     private ObjectMapper objectMapper;
     @Resource
     private MessageService messageService;
+    @Resource
+    private NotificationsService notificationsService;
     @Resource
     private WebSocketSessionManager sessionManager;
     /**
@@ -64,9 +67,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         log.info("用户 {} WebSocket连接成功", userId);
         log.info("sessionId = {}", safeSession.getId());
 
-        // 未读消息数量推送
-        Long userUnReadCount = messageService.getUserUnReadCount(userId);
-        sessionManager.sendUnreadCount(safeSession, userUnReadCount);
+        // 未读消息数量推送：私信 + 评论 + 点赞 + 系统通知
+        Long totalUnreadCount = notificationsService.getTotalUnreadCount(userId);
+        sessionManager.sendUnreadCount(safeSession, totalUnreadCount);
     }
 
     // 客户端发送文本消息时执行

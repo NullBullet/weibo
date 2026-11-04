@@ -1,7 +1,7 @@
 package com.jun.config;
 
 import com.jun.interceptor.JwtHandshakeInterceptor;
-import com.jun.websocket.ChatWebSocketHandler;
+import com.jun.websocket.MessageWebSocketHandler;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -14,7 +14,7 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 @EnableScheduling
 public class WebSocketConfig implements WebSocketConfigurer {
 
-    private final ChatWebSocketHandler chatWebSocketHandler;
+    private final MessageWebSocketHandler messageWebSocketHandler;
     private final JwtHandshakeInterceptor jwtHandshakeInterceptor;
 
     /**
@@ -23,10 +23,10 @@ public class WebSocketConfig implements WebSocketConfigurer {
      */
     private final String[] allowedOrigins;
 
-    public WebSocketConfig(ChatWebSocketHandler chatWebSocketHandler,
+    public WebSocketConfig(MessageWebSocketHandler messageWebSocketHandler,
                            JwtHandshakeInterceptor jwtHandshakeInterceptor,
                            @Value("${jun.websocket.allowed-origins}") String[] allowedOrigins) {
-        this.chatWebSocketHandler = chatWebSocketHandler;
+        this.messageWebSocketHandler = messageWebSocketHandler;
         this.jwtHandshakeInterceptor = jwtHandshakeInterceptor;
         this.allowedOrigins = allowedOrigins;
     }
@@ -35,7 +35,7 @@ public class WebSocketConfig implements WebSocketConfigurer {
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         // WebSocket 连接地址交给 ChatWebSocketHandler 处理
         registry.addHandler(
-                        chatWebSocketHandler,
+                        messageWebSocketHandler,
                         "/ws/chat"
                 )
                 .addInterceptors(jwtHandshakeInterceptor)

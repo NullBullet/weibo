@@ -3,6 +3,7 @@ package com.jun.consumer;
 import com.jun.config.RabbitMQConfig;
 import com.jun.mapper.NotificationsMapper;
 import com.jun.mq.message.CommentMessage;
+import com.jun.service.NotificationsService;
 import com.rabbitmq.client.Channel;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +30,8 @@ public class NoticeCommentConsumer {
     private RabbitTemplate rabbitTemplate;
     @Resource
     private RedisTemplate redisTemplate;
+    @Resource
+    private NotificationsService notificationsService;
 
     @RabbitListener(
             queues = RabbitMQConfig.NOTICE_COMMENT_QUEUE,
@@ -83,6 +86,9 @@ public class NoticeCommentConsumer {
 
             // 幂等标记
             redisTemplate.opsForValue().set(key, "1", 7, TimeUnit.DAYS);
+
+            // 评论通知落库后推送总未读数；推送失败不影响消费与 ACK
+            notificationsService.pushTotalUnreadCount(receiverId);
 
             channel.basicAck(deliveryTag, false);
             log.info("评论通知消息消费成功: receiverId={}, senderId={}, commentId={}",

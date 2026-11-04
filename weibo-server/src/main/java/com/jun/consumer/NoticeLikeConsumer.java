@@ -3,6 +3,7 @@ package com.jun.consumer;
 import com.jun.config.RabbitMQConfig;
 import com.jun.mapper.NotificationsMapper;
 import com.jun.mq.message.LikeMessage;
+import com.jun.service.NotificationsService;
 import com.jun.utils.NotificationLikeCacheHelper;
 import com.rabbitmq.client.Channel;
 import jakarta.annotation.Resource;
@@ -33,6 +34,8 @@ public class NoticeLikeConsumer {
     private RedisTemplate redisTemplate;
     @Resource
     private NotificationLikeCacheHelper notificationLikeCacheHelper;
+    @Resource
+    private NotificationsService notificationsService;
     @Resource
     private TransactionTemplate transactionTemplate;
 
@@ -89,6 +92,9 @@ public class NoticeLikeConsumer {
 
             // 幂等标记
             redisTemplate.opsForValue().set(key, "1", 7, TimeUnit.DAYS);
+
+            // 点赞通知落库后推送总未读数；推送失败不影响消费与 ACK
+            notificationsService.pushTotalUnreadCount(receiverId);
 
             channel.basicAck(deliveryTag, false);
             log.info("点赞通知消费成功: userId={}, targetType={}, targetId={}",

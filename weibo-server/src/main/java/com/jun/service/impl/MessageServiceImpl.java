@@ -16,6 +16,7 @@ import com.jun.mapper.MessageMapper;
 import com.jun.mapper.UsersMapper;
 import com.jun.result.Result;
 import com.jun.service.MessageService;
+import com.jun.service.NotificationsService;
 import com.jun.vo.*;
 import com.jun.websocket.WebSocketSessionManager;
 import jakarta.annotation.Resource;
@@ -47,7 +48,7 @@ public class MessageServiceImpl implements MessageService {
     @Resource
     private UsersMapper usersMapper;
     @Resource
-    private MessageService messageService;
+    private NotificationsService notificationsService;
     @Resource
     private WebSocketSessionManager sessionManager;
 
@@ -283,9 +284,9 @@ public class MessageServiceImpl implements MessageService {
         // 推送给接收者的所有在线连接（多标签页同时在线时每个连接都能收到）
         sessionManager.sendToUser(receiverId, messageVO, "NEW_MESSAGE");
 
-        // 未读消息数量推送
-        Long userUnReadCount = getUserUnReadCount(receiverId);
-        sessionManager.sendUnreadCount(receiverId, userUnReadCount);
+        // 总未读消息数量推送（私信 + 评论 + 点赞 + 系统通知）
+        Long totalUnreadCount = notificationsService.getTotalUnreadCount(receiverId);
+        sessionManager.sendUnreadCount(receiverId, totalUnreadCount);
 
         // 日志脱敏：不输出私信正文，仅保留 ID 与内容长度用于排查
         log.info(
@@ -327,12 +328,12 @@ public class MessageServiceImpl implements MessageService {
         //    与 saveMessage 的条件化 +1 可交换，新消息并发到达时计数不丢失
         messageMapper.decreaseUnreadCount(conversationId, userId, markedCount, latestMsgId);
 
-        // 4. 事务内读取递减后的未读数：同一事务可见本次更新，
+        // 4. 事务内读取递减后的总未读数：同一事务可见本次更新，
         //    且避免在 afterCommit 中再次访问事务资源
-        Long userUnReadCount = messageService.getUserUnReadCount(userId);
+        Long totalUnreadCount = notificationsService.getTotalUnreadCount(userId);
 
         // 5. 事务提交后再推送未读数，避免回滚或提交失败时推送未生效的计数
-        runAfterCommit(() -> sessionManager.sendUnreadCount(userId, userUnReadCount));
+        runAfterCommit(() -> sessionManager.sendUnreadCount(userId, totalUnreadCount));
 
         return Result.success();
     }

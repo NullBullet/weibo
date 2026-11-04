@@ -3,6 +3,7 @@ package com.jun.consumer;
 import com.jun.config.RabbitMQConfig;
 import com.jun.mapper.RewardActivityMapper;
 import com.jun.mq.message.RewardWinMessage;
+import com.jun.service.NotificationsService;
 import com.rabbitmq.client.Channel;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,8 @@ public class RewardWinConsumer {
     private RabbitTemplate rabbitTemplate;
     @Resource
     private RedisTemplate redisTemplate;
+    @Resource
+    private NotificationsService notificationsService;
 
     @RabbitListener(
             queues = RabbitMQConfig.REWARD_WIN_QUEUE,
@@ -54,6 +57,9 @@ public class RewardWinConsumer {
 
             // 幂等标记（7天）
             redisTemplate.opsForValue().set(key, "1", 7, TimeUnit.DAYS);
+
+            // 系统通知落库后推送总未读数；推送失败不影响消费与 ACK
+            notificationsService.pushTotalUnreadCount(message.getUserId());
 
             channel.basicAck(deliveryTag, false);
             log.info("中奖通知发送成功: activityId={}, userId={}, rewardName={}",

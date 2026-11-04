@@ -3,15 +3,17 @@ package com.jun.service.impl;
 import com.jun.context.BaseContext;
 import com.jun.dto.CommentNotificationRawDTO;
 import com.jun.enumeration.TargetType;
+import com.jun.mapper.MessageMapper;
 import com.jun.mapper.NotificationsMapper;
 import com.jun.mapper.RewardActivityMapper;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
-import com.jun.service.MessageService;
 import com.jun.service.NotificationsService;
 import com.jun.utils.NotificationLikeCacheHelper;
 import com.jun.vo.*;
+import com.jun.websocket.WebSocketSessionManager;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -24,6 +26,7 @@ import java.util.*;
 import static com.jun.constant.RedisConstants.LIKE_COMMENT_KEY;
 import static com.jun.constant.RedisConstants.NOTIFICATION_LIKE_PAGE_SIZE;
 
+@Slf4j
 @Service
 public class NotificationsServiceImpl implements NotificationsService {
 
@@ -37,13 +40,15 @@ public class NotificationsServiceImpl implements NotificationsService {
     @Resource
     private NotificationsMapper notificationsMapper;
     @Resource
+    private MessageMapper messageMapper;
+    @Resource
     private RedisTemplate redisTemplate;
     @Resource
     private RewardActivityMapper rewardActivityMapper;
     @Resource
     private NotificationLikeCacheHelper notificationLikeCacheHelper;
     @Resource
-    private MessageService messageService;
+    private WebSocketSessionManager sessionManager;
 
     @Override
     public Result getLikeInfo(String cursor) {
@@ -487,15 +492,32 @@ public class NotificationsServiceImpl implements NotificationsService {
 
     @Override
     public Result getUnreadCount() {
-        Long userId = BaseContext.getCurrentId();
+        return Result.success(loadUnreadCount(BaseContext.getCurrentId()));
+    }
 
+    @Override
+    public Long getTotalUnreadCount(Long userId) {
+        UnreadCountVO counts = loadUnreadCount(userId);
+        return counts.getChat() + counts.getComment() + counts.getLike() + counts.getSystem();
+    }
+
+    @Override
+    public void pushTotalUnreadCount(Long userId) {
+        try {
+            Long total = getTotalUnreadCount(userId);
+            sessionManager.sendUnreadCount(userId, total);
+        } catch (Exception e) {
+            log.warn("推送总未读数失败，userId={}", userId, e);
+        }
+    }
+
+    private UnreadCountVO loadUnreadCount(Long userId) {
         UnreadCountVO counts = new UnreadCountVO();
-        counts.setChat(countOrZero(messageService.getUserUnReadCount(userId)));
+        counts.setChat(countOrZero(messageMapper.countUnreadMessages(userId)));
         counts.setComment(countOrZero(notificationsMapper.countUnreadCommentNotifications(userId)));
         counts.setLike(countOrZero(notificationsMapper.countUnreadLikeNotifications(userId)));
         counts.setSystem(countOrZero(rewardActivityMapper.countUnreadSystemNotifications(userId)));
-
-        return Result.success(counts);
+        return counts;
     }
 
     private long countOrZero(Long count) {
