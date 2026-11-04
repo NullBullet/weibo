@@ -19,13 +19,12 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
- * WebSocket 协议处理：连接建立/关闭、PING/PONG 心跳、CHAT 消息校验与落库、
- * ACK 及未读数推送编排。在线连接的管理与消息发送统一委托给
- * {@link WebSocketSessionManager}。
+ * WebSocket 协议处理：连接生命周期、客户端消息接收、PING/PONG 心跳、
+ * CHAT 消息校验与落库、ACK 响应，以及把已保存的私信事件分发给 MessageService。
+ * 在线连接管理与消息发送统一委托给 {@link WebSocketSessionManager}。
  */
 @Slf4j
 @Component
@@ -192,45 +191,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        // 4. 推送给接收者的所有在线连接（多标签页同时在线时每个连接都能收到）
-        List<WebSocketSession> targetSessions = sessionManager.getSessions(messageVO.getReceiverId());
-
-        // 5. 接收者在线
-        if (!targetSessions.isEmpty()) {
-
-            // 6. 把完整消息对象转换成 JSON
-            String json = objectMapper.writeValueAsString(messageVO);
-
-            // 7. 推送给接收者的每个活跃连接；单个连接推送失败不影响已持久化的消息
-            //    和已增加的未读数，也不应中断发送者的处理流程
-            for (WebSocketSession targetSession : targetSessions) {
-                if (targetSession.isOpen()) {
-                    sessionManager.sendMessageQuietly(targetSession, new TextMessage(json), "NEW_MESSAGE");
-                }
-            }
-
-            // 未读消息数量推送
-            Long userUnReadCount = messageService.getUserUnReadCount(messageVO.getReceiverId());
-            sessionManager.sendUnreadCount(targetSessions, userUnReadCount);
-
-            // 日志脱敏：不输出私信正文，仅保留 ID 与内容长度用于排查
-            log.info(
-                    "用户 {} → 用户 {}：消息已推送，conversationId = {}，messageId = {}，contentLength = {}",
-                    messageVO.getSenderId(),
-                    messageVO.getReceiverId(),
-                    messageVO.getConversationId(),
-                    messageVO.getMessageId(),
-                    messageVO.getContent() == null ? 0 : messageVO.getContent().length()
-            );
-
-        } else {
-
-            log.info(
-                    "用户 {} 当前不在线，消息已保存，messageId = {}",
-                    messageVO.getReceiverId(),
-                    messageVO.getMessageId()
-            );
-        }
+        // 4. 消息事件分发：私信推送（NEW_MESSAGE + 未读数）由业务层负责，
+        //    推送异常不影响已持久化消息和已发送的 ACK
+        messageService.pushMessage(messageVO);
     }
 
     // 客户端断开时执行

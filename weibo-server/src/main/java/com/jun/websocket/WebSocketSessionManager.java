@@ -105,6 +105,14 @@ public class WebSocketSessionManager {
     }
 
     /**
+     * 判断用户当前是否有在线连接。
+     */
+    public boolean isOnline(Long userId) {
+        List<WebSocketSession> sessions = userSessions.get(userId);
+        return sessions != null && !sessions.isEmpty();
+    }
+
+    /**
      * 获取连接对应的并发安全装饰器；未经注册的会话回退为原会话。
      */
     public WebSocketSession getSafeSession(WebSocketSession session) {
@@ -193,12 +201,11 @@ public class WebSocketSessionManager {
     }
 
     /**
-     * 向指定用户的所有在线连接推送业务通知（多标签页同时在线时每个连接都收到），
-     * 适用于 MQ 消费者等无 WebSocket 上下文的场景（如转发落库结果、抽奖参与结果）。
-     * 负载由调用方构造，type 字段标识消息类型；用户不在线时静默跳过，
-     * 序列化或发送失败仅记录日志，不向调用方抛出，保证推送失败不影响消费与 ACK 流程。
+     * 向指定用户的所有在线连接发送同一业务负载（多标签页同时在线时每个连接都收到）。
+     * 负载由调用方构造，scene 用于日志定位；用户不在线时静默跳过，
+     * 序列化或发送失败仅记录日志，不向调用方抛出。
      */
-    public void sendNotification(Long userId, Object payload, String scene) {
+    public void sendToUser(Long userId, Object payload, String scene) {
         List<WebSocketSession> sessions = userSessions.get(userId);
         if (sessions == null || sessions.isEmpty()) {
             return;
@@ -217,6 +224,15 @@ public class WebSocketSessionManager {
                 sendMessageQuietly(session, new TextMessage(json), scene);
             }
         }
+    }
+
+    /**
+     * 向指定用户的所有在线连接推送业务通知。
+     * 适用于 MQ 消费者等无 WebSocket 上下文的场景（如转发落库结果、抽奖参与结果），
+     * 与 {@link #sendToUser(Long, Object, String)} 共用同一发送与异常处理逻辑。
+     */
+    public void sendNotification(Long userId, Object payload, String scene) {
+        sendToUser(userId, payload, scene);
     }
 
     /**

@@ -19,6 +19,7 @@ import com.jun.service.MessageService;
 import com.jun.vo.*;
 import com.jun.websocket.WebSocketSessionManager;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+@Slf4j
 @Service
 public class MessageServiceImpl implements MessageService {
 
@@ -258,6 +260,42 @@ public class MessageServiceImpl implements MessageService {
 
         // 首次创建
         return MessageSaveResult.created(vo);
+    }
+
+    /**
+     * 推送已保存的私信：向接收者的所有在线连接广播 NEW_MESSAGE，并刷新未读数。
+     * 推送失败不影响已持久化的消息；幂等重放由调用方跳过，不会进入该方法。
+     */
+    @Override
+    public void pushMessage(ChatMessageVO messageVO) {
+        Long receiverId = messageVO.getReceiverId();
+
+        // 接收者不在线：消息已保存，无需推送 NEW_MESSAGE 和未读数
+        if (!sessionManager.isOnline(receiverId)) {
+            log.info(
+                    "用户 {} 当前不在线，消息已保存，messageId = {}",
+                    receiverId,
+                    messageVO.getMessageId()
+            );
+            return;
+        }
+
+        // 推送给接收者的所有在线连接（多标签页同时在线时每个连接都能收到）
+        sessionManager.sendToUser(receiverId, messageVO, "NEW_MESSAGE");
+
+        // 未读消息数量推送
+        Long userUnReadCount = getUserUnReadCount(receiverId);
+        sessionManager.sendUnreadCount(receiverId, userUnReadCount);
+
+        // 日志脱敏：不输出私信正文，仅保留 ID 与内容长度用于排查
+        log.info(
+                "用户 {} → 用户 {}：消息已推送，conversationId = {}，messageId = {}，contentLength = {}",
+                messageVO.getSenderId(),
+                receiverId,
+                messageVO.getConversationId(),
+                messageVO.getMessageId(),
+                messageVO.getContent() == null ? 0 : messageVO.getContent().length()
+        );
     }
 
     @Override
