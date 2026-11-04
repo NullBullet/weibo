@@ -26,10 +26,22 @@ public class NotificationsController {
         return notificationsService.getLikeDetail(targetId);
     }
 
+    @PutMapping("/likes/read-all")
+    public Result markAllLikeRead() {
+        log.info("标记全部点赞通知已读");
+        return notificationsService.markAllLikeNotificationsRead();
+    }
+
     @GetMapping("/comments")
     public Result comment() {
         log.info("获取当前用户收到的评论列表");
         return notificationsService.getCommentInfo();
+    }
+
+    @PutMapping("/comments/read-all")
+    public Result markAllCommentRead() {
+        log.info("标记全部评论通知已读");
+        return notificationsService.markAllCommentNotificationsRead();
     }
 
     @GetMapping("/system")
@@ -43,5 +55,11 @@ public class NotificationsController {
     public Result markAllSystemRead() {
         log.info("标记全部系统通知已读");
         return notificationsService.markAllSystemNotificationsRead();
+    }
+
+    @GetMapping("/unread-count")
+    public Result getUnreadCount() {
+        log.info("获取消息中心统一未读数");
+        return notificationsService.getUnreadCount();
     }
 }

@@ -7,6 +7,7 @@ import com.jun.vo.SystemNotificationVO;
 import com.jun.vo.WinnerVO;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
@@ -68,6 +69,9 @@ public interface RewardActivityMapper {
                                                       @Param("pageSize") Integer pageSize);
 
     Integer countSystemNotifications(@Param("userId") Long userId);
+
+    @Select("select count(*) from notification_system where user_id = #{userId} and is_read = 0")
+    Long countUnreadSystemNotifications(@Param("userId") Long userId);
 
     @Update("update notification_system set is_read = 1 where user_id = #{userId} and is_read = 0")
     int markAllNotificationsRead(@Param("userId") Long userId);

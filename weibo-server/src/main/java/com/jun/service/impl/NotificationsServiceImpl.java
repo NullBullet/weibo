@@ -7,6 +7,7 @@ import com.jun.mapper.NotificationsMapper;
 import com.jun.mapper.RewardActivityMapper;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
+import com.jun.service.MessageService;
 import com.jun.service.NotificationsService;
 import com.jun.utils.NotificationLikeCacheHelper;
 import com.jun.vo.*;
@@ -41,6 +42,8 @@ public class NotificationsServiceImpl implements NotificationsService {
     private RewardActivityMapper rewardActivityMapper;
     @Resource
     private NotificationLikeCacheHelper notificationLikeCacheHelper;
+    @Resource
+    private MessageService messageService;
 
     @Override
     public Result getLikeInfo(String cursor) {
@@ -480,6 +483,37 @@ public class NotificationsServiceImpl implements NotificationsService {
         pageResult.setTotal(total);
         pageResult.setRecords(records);
         return Result.success(pageResult);
+    }
+
+    @Override
+    public Result getUnreadCount() {
+        Long userId = BaseContext.getCurrentId();
+
+        UnreadCountVO counts = new UnreadCountVO();
+        counts.setChat(countOrZero(messageService.getUserUnReadCount(userId)));
+        counts.setComment(countOrZero(notificationsMapper.countUnreadCommentNotifications(userId)));
+        counts.setLike(countOrZero(notificationsMapper.countUnreadLikeNotifications(userId)));
+        counts.setSystem(countOrZero(rewardActivityMapper.countUnreadSystemNotifications(userId)));
+
+        return Result.success(counts);
+    }
+
+    private long countOrZero(Long count) {
+        return count == null ? 0L : count;
+    }
+
+    @Override
+    public Result markAllCommentNotificationsRead() {
+        Long receiverId = BaseContext.getCurrentId();
+        int rows = notificationsMapper.markAllCommentNotificationsRead(receiverId);
+        return Result.success(rows);
+    }
+
+    @Override
+    public Result markAllLikeNotificationsRead() {
+        Long receiverId = BaseContext.getCurrentId();
+        int rows = notificationsMapper.markAllLikeNotificationsRead(receiverId);
+        return Result.success(rows);
     }
 
     @Override

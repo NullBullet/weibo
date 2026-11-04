@@ -53,7 +53,15 @@ public interface NotificationsMapper {
                          @Param("targetType") Integer targetType,
                          @Param("targetId") Long targetId);
 
+    Long countUnreadLikeNotifications(@Param("receiverId") Long receiverId);
+
+    int markAllLikeNotificationsRead(@Param("receiverId") Long receiverId);
+
     List<CommentNotificationRawDTO> getCommentNotifications(@Param("receiverId") Long receiverId);
+
+    Long countUnreadCommentNotifications(@Param("receiverId") Long receiverId);
+
+    int markAllCommentNotificationsRead(@Param("receiverId") Long receiverId);
 
     @MapKey("id")
     List<Map<String, Object>> getSenderInfos(@Param("senderIds") Set<Long> senderIds);

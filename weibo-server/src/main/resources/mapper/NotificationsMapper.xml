@@ -106,6 +106,22 @@
           and like_count &lt;= 0
     </delete>
 
+    <select id="countUnreadLikeNotifications" resultType="java.lang.Long">
+        select count(*)
+        from notification_like
+        where receiver_id = #{receiverId}
+          and is_read = 0
+          and like_count &gt; 0
+    </select>
+
+    <update id="markAllLikeNotificationsRead">
+        update notification_like
+        set is_read = 1
+        where receiver_id = #{receiverId}
+          and is_read = 0
+          and like_count &gt; 0
+    </update>
+
     <select id="getCommentNotifications" resultType="com.jun.dto.CommentNotificationRawDTO">
         select id          as notificationId,
                sender_id   as senderId,
@@ -118,6 +134,20 @@
         where receiver_id = #{receiverId}
         order by create_time desc
     </select>
+
+    <select id="countUnreadCommentNotifications" resultType="java.lang.Long">
+        select count(*)
+        from notification_comment
+        where receiver_id = #{receiverId}
+          and is_read = 0
+    </select>
+
+    <update id="markAllCommentNotificationsRead">
+        update notification_comment
+        set is_read = 1
+        where receiver_id = #{receiverId}
+          and is_read = 0
+    </update>
 
     <select id="getSenderInfos" resultType="map">
         select id, nickname, avatar

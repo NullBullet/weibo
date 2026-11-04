@@ -11,5 +11,14 @@ public interface NotificationsService {
 
     Result getSystemNotifications(Integer page, Integer pageSize);
 
+    /**
+     * 消息中心统一未读数：私信、评论、点赞、系统通知。
+     */
+    Result getUnreadCount();
+
+    Result markAllCommentNotificationsRead();
+
+    Result markAllLikeNotificationsRead();
+
     Result markAllSystemNotificationsRead();
 }
