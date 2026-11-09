@@ -119,4 +119,13 @@ public class RedisConstants {
     public static final Long NOTIFICATION_LIKE_CACHE_TTL = 30L;
     //点赞通知分页索引 TTL：60 秒，仅用于失效时定位已缓存页，不续期
     public static final Long NOTIFICATION_LIKE_PAGES_TTL = 60L;
+
+    //消息中心统一未读数旁路缓存    notification:unread:{userId} -> Hash {chat, comment, like, system}
+    public static final String NOTIFICATION_UNREAD_KEY = "notification:unread:";
+    //未读数缓存 TTL：7 天（秒），读取命中与未读数发生变化时续期，miss 时按 MySQL 重建
+    public static final Long NOTIFICATION_UNREAD_TTL = 7 * 24 * 60 * 60L;
+    //未读数缓存重建分布式锁  notification:unread:lock:{userId}
+    public static final String NOTIFICATION_UNREAD_LOCK_KEY = "notification:unread:lock:";
+    //重建锁过期时间（秒），防止持锁端宕机导致死锁
+    public static final long NOTIFICATION_UNREAD_LOCK_TTL_SECONDS = 30L;
 }

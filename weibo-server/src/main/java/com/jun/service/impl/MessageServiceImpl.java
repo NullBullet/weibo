@@ -249,6 +249,9 @@ public class MessageServiceImpl implements MessageService {
                 messageId
         );
 
+        // 未读数发生变化：事务提交后按 MySQL 重算并续期统一未读数缓存
+        notificationsService.refreshUnreadCountAfterCommit(receiverId);
+
         ChatMessageVO vo = new ChatMessageVO();
         vo.setType("NEW_MESSAGE");
         vo.setMessageId(messageId);
@@ -328,12 +331,9 @@ public class MessageServiceImpl implements MessageService {
         //    与 saveMessage 的条件化 +1 可交换，新消息并发到达时计数不丢失
         messageMapper.decreaseUnreadCount(conversationId, userId, markedCount, latestMsgId);
 
-        // 4. 事务内读取递减后的总未读数：同一事务可见本次更新，
-        //    且避免在 afterCommit 中再次访问事务资源
-        Long totalUnreadCount = notificationsService.getTotalUnreadCount(userId);
-
-        // 5. 事务提交后再推送未读数，避免回滚或提交失败时推送未生效的计数
-        runAfterCommit(() -> sessionManager.sendUnreadCount(userId, totalUnreadCount));
+        // 4. 事务提交后按 MySQL 重算未读数缓存并推送最新总数：
+        //    避免在事务内读取尚未刷新的缓存，也避免回滚或提交失败时推送未生效的计数
+        runAfterCommit(() -> notificationsService.pushTotalUnreadCount(userId));
 
         return Result.success();
     }

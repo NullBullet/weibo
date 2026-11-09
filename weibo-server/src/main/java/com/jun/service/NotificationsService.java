@@ -26,6 +26,11 @@ public interface NotificationsService {
      */
     void pushTotalUnreadCount(Long userId);
 
+    /**
+     * 未读数发生变化后（事务提交后）按 MySQL 重算统一未读数缓存并续期 TTL。
+     */
+    void refreshUnreadCountAfterCommit(Long userId);
+
     Result markAllCommentNotificationsRead();
 
     Result markAllLikeNotificationsRead();

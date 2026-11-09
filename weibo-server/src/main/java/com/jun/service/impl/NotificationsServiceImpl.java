@@ -3,13 +3,13 @@ package com.jun.service.impl;
 import com.jun.context.BaseContext;
 import com.jun.dto.CommentNotificationRawDTO;
 import com.jun.enumeration.TargetType;
-import com.jun.mapper.MessageMapper;
 import com.jun.mapper.NotificationsMapper;
 import com.jun.mapper.RewardActivityMapper;
 import com.jun.result.PageResult;
 import com.jun.result.Result;
 import com.jun.service.NotificationsService;
 import com.jun.utils.NotificationLikeCacheHelper;
+import com.jun.utils.NotificationUnreadCacheHelper;
 import com.jun.vo.*;
 import com.jun.websocket.WebSocketSessionManager;
 import jakarta.annotation.Resource;
@@ -40,13 +40,13 @@ public class NotificationsServiceImpl implements NotificationsService {
     @Resource
     private NotificationsMapper notificationsMapper;
     @Resource
-    private MessageMapper messageMapper;
-    @Resource
     private RedisTemplate redisTemplate;
     @Resource
     private RewardActivityMapper rewardActivityMapper;
     @Resource
     private NotificationLikeCacheHelper notificationLikeCacheHelper;
+    @Resource
+    private NotificationUnreadCacheHelper notificationUnreadCacheHelper;
     @Resource
     private WebSocketSessionManager sessionManager;
 
@@ -492,42 +492,40 @@ public class NotificationsServiceImpl implements NotificationsService {
 
     @Override
     public Result getUnreadCount() {
-        return Result.success(loadUnreadCount(BaseContext.getCurrentId()));
+        return Result.success(notificationUnreadCacheHelper.get(BaseContext.getCurrentId()));
     }
 
     @Override
     public Long getTotalUnreadCount(Long userId) {
-        UnreadCountVO counts = loadUnreadCount(userId);
-        return counts.getChat() + counts.getComment() + counts.getLike() + counts.getSystem();
+        return totalOf(notificationUnreadCacheHelper.get(userId));
     }
 
     @Override
     public void pushTotalUnreadCount(Long userId) {
         try {
-            Long total = getTotalUnreadCount(userId);
-            sessionManager.sendUnreadCount(userId, total);
+            // 未读数已发生变化：按 MySQL 重算并续期旁路缓存，再用最新值推送
+            UnreadCountVO counts = notificationUnreadCacheHelper.refresh(userId);
+            sessionManager.sendUnreadCount(userId, totalOf(counts));
         } catch (Exception e) {
             log.warn("推送总未读数失败，userId={}", userId, e);
         }
     }
 
-    private UnreadCountVO loadUnreadCount(Long userId) {
-        UnreadCountVO counts = new UnreadCountVO();
-        counts.setChat(countOrZero(messageMapper.countUnreadMessages(userId)));
-        counts.setComment(countOrZero(notificationsMapper.countUnreadCommentNotifications(userId)));
-        counts.setLike(countOrZero(notificationsMapper.countUnreadLikeNotifications(userId)));
-        counts.setSystem(countOrZero(rewardActivityMapper.countUnreadSystemNotifications(userId)));
-        return counts;
+    @Override
+    public void refreshUnreadCountAfterCommit(Long userId) {
+        notificationUnreadCacheHelper.refreshAfterCommit(userId);
     }
 
-    private long countOrZero(Long count) {
-        return count == null ? 0L : count;
+    private Long totalOf(UnreadCountVO counts) {
+        return counts.getChat() + counts.getComment() + counts.getLike() + counts.getSystem();
     }
 
     @Override
     public Result markAllCommentNotificationsRead() {
         Long receiverId = BaseContext.getCurrentId();
         int rows = notificationsMapper.markAllCommentNotificationsRead(receiverId);
+        // 未读状态已变化：重算并续期统一未读数缓存
+        notificationUnreadCacheHelper.refreshAfterCommit(receiverId);
         return Result.success(rows);
     }
 
@@ -535,6 +533,8 @@ public class NotificationsServiceImpl implements NotificationsService {
     public Result markAllLikeNotificationsRead() {
         Long receiverId = BaseContext.getCurrentId();
         int rows = notificationsMapper.markAllLikeNotificationsRead(receiverId);
+        // 未读状态已变化：重算并续期统一未读数缓存
+        notificationUnreadCacheHelper.refreshAfterCommit(receiverId);
         return Result.success(rows);
     }
 
@@ -542,6 +542,8 @@ public class NotificationsServiceImpl implements NotificationsService {
     public Result markAllSystemNotificationsRead() {
         Long userId = BaseContext.getCurrentId();
         int rows = rewardActivityMapper.markAllNotificationsRead(userId);
+        // 未读状态已变化：重算并续期统一未读数缓存
+        notificationUnreadCacheHelper.refreshAfterCommit(userId);
         return Result.success(rows);
     }
 }
